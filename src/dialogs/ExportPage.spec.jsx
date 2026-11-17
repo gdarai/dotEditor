@@ -22,4 +22,10 @@ describe('ExportPage', () => {
     render(<ExportPage dot="graph {}" onBack={vi.fn()} />)
     expect(await screen.findByRole('alert')).toHaveTextContent('permission denied')
   })
+
+  it('uses the red Back button', () => {
+    writeText.mockResolvedValue()
+    render(<ExportPage dot="graph {}" onBack={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveClass('button-back')
+  })
 })

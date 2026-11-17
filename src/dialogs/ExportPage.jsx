@@ -32,7 +32,7 @@ export default function ExportPage({ dot, onBack }) {
 
   return (
     <main className="export-page">
-      <button type="button" onClick={onBack}>Back</button>
+      <button className="button-back" type="button" onClick={onBack}>Back</button>
       {error && <p role="alert">{error} <button type="button" onClick={copy}>Retry copy</button></p>}
       <pre ref={preRef}>{dot}</pre>
     </main>

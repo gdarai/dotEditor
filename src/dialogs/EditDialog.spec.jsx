@@ -37,6 +37,27 @@ describe('EditDialog', () => {
     expect(onCommit).toHaveBeenCalledWith('digraph { a; b; }')
   })
 
+  it('places Apply and Back together in the footer for a new node', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
+    const actions = within(screen.getByRole('group', { name: 'Dialog actions' }))
+    expect(actions.getAllByRole('button').map(button => button.textContent)).toEqual(['Apply', 'Back'])
+    expect(actions.getByRole('button', { name: 'Apply' })).toHaveClass('button-apply')
+    expect(actions.getByRole('button', { name: 'Back' })).toHaveClass('button-back')
+  })
+
+  it('submits the new-node form with Enter after moving Apply to the footer', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
+    await userEvent.type(screen.getByLabelText('Node ID'), 'b{Enter}')
+    expect(onCommit).toHaveBeenCalledWith('digraph { a; b; }')
+  })
+
+  it('keeps Apply DOT beside Back in the footer', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Raw DOT' }))
+    const actions = within(screen.getByRole('group', { name: 'Dialog actions' }))
+    expect(actions.getAllByRole('button').map(button => button.textContent)).toEqual(['Apply DOT', 'Back'])
+    expect(actions.getByRole('button', { name: 'Apply DOT' })).toHaveClass('button-apply')
+  })
+
   it('lists existing nodes for selection', async () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit node' }))
     expect(screen.getByRole('button', { name: 'a' })).toBeInTheDocument()

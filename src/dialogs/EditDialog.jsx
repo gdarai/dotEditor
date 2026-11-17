@@ -123,7 +123,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
         <p>Complex edges cannot be edited safely here. Use the Raw DOT card instead.</p>
       )}
       {page === 'form' && !selected?.complex && (
-        <form onSubmit={commit}>
+        <form id="edit-element-form" onSubmit={commit}>
           <div className="fields">
             {type !== 'edge' && <TextField label={type === 'group' ? 'Cluster ID' : 'Node ID'} required value={fields.id || ''} onChange={value => change('id', value)} />}
             {!editing && <OptionsSelectBox label="Parent group" value={fields.parentOffset || ''} options={graph.groups.map(group => ({ value: `${group.location.start.offset}`, label: group.id }))} onChange={value => change('parentOffset', value)} />}
@@ -139,16 +139,17 @@ export default function EditDialog({ dot, onCommit, onClose }) {
             {type === 'group' && <ColorPicker label="Background color" value={fields.bgcolor || ''} onChange={value => change('bgcolor', value)} />}
             {type === 'edge' && graph.directed && <SelectField label="Arrowhead" value={fields.arrowhead || ''} choices={['normal', 'none', 'vee', 'dot', 'diamond']} onChange={value => change('arrowhead', value)} />}
           </div>
-          <button type="submit">Apply</button>
+          <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
         </form>
       )}
       {page === 'raw' && <>
         <label className="field">DOT source<textarea value={raw} onChange={event => setRaw(event.target.value)} spellCheck="false" /></label>
-        <button type="button" onClick={commitRaw}>Apply DOT</button>
       </>}
       {error && <p role="alert">{error}</p>}
-      <div className="card-footer">
-        <button type="button" onClick={page === 'home' ? onClose : back}>Back</button>
+      <div className="card-footer" role="group" aria-label="Dialog actions">
+        {page === 'form' && !selected?.complex && <button className="button-apply" type="submit" form="edit-element-form">Apply</button>}
+        {page === 'raw' && <button className="button-apply" type="button" onClick={commitRaw}>Apply DOT</button>}
+        <button className="button-back" type="button" onClick={page === 'home' ? onClose : back}>Back</button>
       </div>
     </section>
   )

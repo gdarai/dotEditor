@@ -49,7 +49,8 @@ export default function ConfigDialog({
           <input type="password" value={apiKey} autoComplete="off" onChange={event => onChange('apiKey', event.target.value)} />
         </label>
       </div>
-      <div className="actions">
+      {message && <p role="status">{message}</p>}
+      <div className="card-footer" role="group" aria-label="Dialog actions">
         {!dot && <button type="button" disabled={busy} onClick={onCreate}>New graph</button>}
         <button type="button" disabled={busy || !dot} onClick={() => run(() => saveGraph({ ...config, dot }), 'Saved to web storage')}>Save</button>
         <button type="button" disabled={busy} onClick={() => run(async () => {
@@ -58,9 +59,8 @@ export default function ConfigDialog({
           onLoad(loaded)
         })}>Load</button>
         <button type="button" disabled={!dot || busy} onClick={onExport}>Export</button>
+        {dot && <button className="button-back" type="button" onClick={onClose}>Back</button>}
       </div>
-      {message && <p role="status">{message}</p>}
-      {dot && <div className="card-footer"><button type="button" onClick={onClose}>Back</button></div>}
     </section>
   )
 }

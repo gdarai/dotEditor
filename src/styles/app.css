@@ -17,6 +17,8 @@ button {
   cursor: pointer;
 }
 button:disabled { opacity: .48; cursor: not-allowed; }
+.button-back { background: #fff0ed; border-color: #d17265; color: #861d15; }
+.button-apply { background: #ecf8ef; border-color: #67a77b; color: #14663d; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: 3px solid #397fbe;
   outline-offset: 2px;
@@ -58,8 +60,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .color-popup input[type=color] { height: 44px; padding: 3px; }
 .swatches { display: flex; flex-wrap: wrap; gap: 4px; }
 .swatches button { min-height: 30px; width: 30px; padding: 0; }
-.actions, .card-footer { display: flex; flex-wrap: wrap; gap: 8px; }
-.card-footer { justify-content: center; margin-top: auto; padding-top: 8px; }
+.card-footer { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: auto; padding-top: 8px; }
 .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .selection-list { display: grid; gap: 6px; overflow-y: auto; }
 .selection-list button { text-align: left; }
