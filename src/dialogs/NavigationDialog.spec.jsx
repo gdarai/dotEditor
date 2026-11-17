@@ -18,4 +18,18 @@ describe('NavigationDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Zoom in' }))
     expect(onZoom).toHaveBeenCalledWith(1.25)
   })
+
+  it('requests movement on arrow key presses', async () => {
+    await userEvent.keyboard('{ArrowUp}')
+    expect(onMove).toHaveBeenCalledWith('up')
+    await userEvent.keyboard('{ArrowRight}')
+    expect(onMove).toHaveBeenCalledWith('right')
+  })
+
+  it('requests zoom on PageUp/PageDown presses', async () => {
+    await userEvent.keyboard('{PageUp}')
+    expect(onZoom).toHaveBeenCalledWith(1.25)
+    await userEvent.keyboard('{PageDown}')
+    expect(onZoom).toHaveBeenCalledWith(0.8)
+  })
 })
