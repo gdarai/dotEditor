@@ -48,6 +48,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     setPendingDeletion(null)
     setFields(next === 'new-group' ? { id: 'cluster_' } : {})
     setError('')
+    if (next === 'raw') setRaw(dot)
     setPage(next === 'raw' ? 'raw' : next.startsWith('edit-') ? 'select' : 'form')
   }
 
