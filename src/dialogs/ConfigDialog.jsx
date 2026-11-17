@@ -1,12 +1,17 @@
 import { useState } from 'react'
 import { loadGraph, saveGraph } from '../api.js'
 import { inspectGraph } from '../graph/dot.js'
+import useEscapeKey from '../components/useEscapeKey.js'
+import useAutoFocus from '../components/useAutoFocus.js'
 
 export default function ConfigDialog({
   dot, graphName, apiUrl, apiKey, layout, onChange, onCreate, onLoad, onExport, onClose,
 }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const dialogRef = useAutoFocus()
+
+  useEscapeKey(onClose, Boolean(dot))
 
   async function run(action, success) {
     setBusy(true)
@@ -24,7 +29,7 @@ export default function ConfigDialog({
   const config = { url: apiUrl, graphName, apiKey }
 
   return (
-    <section className="dialog" role="dialog" aria-modal="true" aria-label="Config">
+    <section className="dialog" role="dialog" aria-modal="true" aria-label="Config" ref={dialogRef}>
       <h2>Config</h2>
       <div className="fields">
         <label className="field">Display

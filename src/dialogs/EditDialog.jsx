@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { createElement, inspectGraph, updateElement } from '../graph/dot.js'
 import ColorPicker from '../components/ColorPicker.jsx'
 import OptionsSelectBox from '../components/OptionsSelectBox.jsx'
+import useEscapeKey from '../components/useEscapeKey.js'
+import useAutoFocus from '../components/useAutoFocus.js'
 
 const TYPES = { node: 'node', group: 'group', edge: 'arrow' }
 const ACTIONS = [
@@ -29,6 +31,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
   const graph = inspectGraph(dot)
   const type = action.split('-')[1]
   const editing = action.startsWith('edit-')
+  const dialogRef = useAutoFocus([page])
 
   function chooseAction(next) {
     setAction(next)
@@ -59,6 +62,8 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     else setPage('home')
     setError('')
   }
+
+  useEscapeKey(page === 'home' ? onClose : back)
 
   function commit(event) {
     event.preventDefault()
@@ -92,7 +97,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
   const heading = ACTIONS.find(([key]) => key === action)?.[1]
 
   return (
-    <section className="dialog edit-dialog" role="dialog" aria-modal="true" aria-label="Edit">
+    <section className="dialog edit-dialog" role="dialog" aria-modal="true" aria-label="Edit" ref={dialogRef}>
       <h2>{page === 'home' ? 'Edit' : heading}</h2>
       {page === 'home' && (
         <div className="action-grid">
