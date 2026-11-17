@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { planDeletion } from '../graph/dot.js'
 import EditDialog from './EditDialog.jsx'
 
 vi.mock('../graph/dot.js', () => ({
@@ -18,6 +19,11 @@ vi.mock('../graph/dot.js', () => ({
   }),
   createElement: vi.fn(() => 'digraph { a; b; }'),
   updateElement: vi.fn(() => 'digraph { a [label="A"]; }'),
+  planDeletion: vi.fn(() => ({
+    counts: { nodes: 2, arrows: 1, groups: 1 },
+    deleted: 'digraph { deleted; }',
+    kept: 'digraph { kept; }',
+  })),
 }))
 
 describe('EditDialog', () => {
@@ -61,6 +67,58 @@ describe('EditDialog', () => {
   it('lists existing nodes for selection', async () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit node' }))
     expect(screen.getByRole('button', { name: 'a' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Del node a' })).toHaveAttribute('title', 'Del')
+    expect(screen.getByRole('button', { name: 'Del node a' })).toHaveClass('button-delete')
+  })
+
+  it('requires confirmation before deleting a node and defaults to Back', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit node' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Del node a' }))
+    expect(screen.getByText('Will delete 2 nodes, 1 arrows and 1 groups.')).toBeInTheDocument()
+    expect(onCommit).not.toHaveBeenCalled()
+    const actions = within(screen.getByRole('group', { name: 'Dialog actions' }))
+    const back = actions.getByRole('button', { name: 'Back' })
+    expect(back).toHaveFocus()
+    expect(back).not.toHaveClass('button-back')
+    await userEvent.keyboard('{Enter}')
+    expect(screen.getByRole('button', { name: 'Del node a' })).toBeInTheDocument()
+    expect(onCommit).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Del node a' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(planDeletion).toHaveBeenCalledWith('digraph { a; }', 'node', { start: { offset: 1 } })
+    expect(onCommit).toHaveBeenCalledWith('digraph { deleted; }')
+  })
+
+  it('offers keeping group children or deleting the whole group', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit group' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Del group cluster_team' }))
+    expect(screen.getByRole('button', { name: 'Back' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Delete Elements' })).toHaveClass('button-delete')
+    await userEvent.click(screen.getByRole('button', { name: 'Keep Elements' }))
+    expect(onCommit).toHaveBeenLastCalledWith('digraph { kept; }')
+    await userEvent.click(screen.getByRole('button', { name: 'Del group cluster_team' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Elements' }))
+    expect(onCommit).toHaveBeenLastCalledWith('digraph { deleted; }')
+  })
+
+  it('allows deletion of complex arrows without opening the editing form', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit arrow' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Del arrow a → b' }))
+    expect(screen.getByRole('heading', { name: 'Delete arrow?' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(onCommit).toHaveBeenCalledWith('digraph { deleted; }')
+  })
+
+  it('shows deletion failures without committing or closing the confirmation', async () => {
+    planDeletion.mockImplementationOnce(() => ({
+      counts: { nodes: 1, arrows: 0, groups: 0 }, deleted: 'digraph {}',
+    })).mockImplementationOnce(() => { throw new Error('Stale location') })
+    await userEvent.click(screen.getByRole('button', { name: 'Edit node' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Del node a' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Stale location')
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument()
+    expect(onCommit).not.toHaveBeenCalled()
   })
 
   it('offers distinct graph IDs in both new-arrow endpoint inputs', async () => {

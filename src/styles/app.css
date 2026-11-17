@@ -17,7 +17,7 @@ button {
   cursor: pointer;
 }
 button:disabled { opacity: .48; cursor: not-allowed; }
-.button-back { background: #fff0ed; border-color: #d17265; color: #861d15; }
+.button-back, .button-delete { background: #fff0ed; border-color: #d17265; color: #861d15; }
 .button-apply { background: #ecf8ef; border-color: #67a77b; color: #14663d; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: 3px solid #397fbe;
@@ -64,6 +64,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .selection-list { display: grid; gap: 6px; overflow-y: auto; }
 .selection-list button { text-align: left; }
+.selection-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.selection-row .button-delete { min-height: 36px; padding: 4px 8px; text-align: center; }
 .navigation-dialog { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: grid; grid-template-columns: repeat(3, 54px); gap: 5px; background: #ffffffdf; padding: 7px; border-radius: 12px; box-shadow: 0 3px 18px #132b4840; }
 .navigation-dialog button { min-height: 48px; padding: 0; font-size: 24px; }
 .app-error, .render-error { position: absolute; z-index: 3; left: 12px; right: 12px; top: 70px; padding: 12px; background: #fff0ed; color: #861d15; border: 1px solid #d17265; border-radius: 8px; }

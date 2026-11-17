@@ -357,3 +357,98 @@ export function updateElement(dot, type, location, data) {
   }
   return patch(dot, changes);
 }
+
+function edgeReferences(item, id) {
+  function contains(target) {
+    if (target.type === 'NodeRef') return target.id.value === id;
+    return target.children?.some(contains) ?? false;
+  }
+  return item.targets.some(contains);
+}
+
+function groupBodyStart(dot, item) {
+  let state = 'normal';
+  const start = item.id?.location.end.offset ?? item.location.start.offset;
+  for (let i = start; i < item.location.end.offset - 1; i++) {
+    const ch = dot[i];
+    const next = dot[i + 1];
+    if (state === 'line') {
+      if (ch === '\n') state = 'normal';
+    } else if (state === 'block') {
+      if (ch === '*' && next === '/') { state = 'normal'; i++; }
+    } else if (state === 'quote') {
+      if (ch === '\\') i++;
+      else if (ch === '"') state = 'normal';
+    } else if (ch === '/' && next === '/') { state = 'line'; i++; }
+    else if (ch === '/' && next === '*') { state = 'block'; i++; }
+    else if (ch === '"') state = 'quote';
+    else if (ch === '{') return i + 1;
+  }
+  throw new Error('Cannot locate group body');
+}
+
+function keepGroupChildren(dot, group) {
+  const start = groupBodyStart(dot, group);
+  const end = group.location.end.offset - 1;
+  if (dot[end] !== '}') throw new Error('Cannot locate group closing brace');
+  let body = dot.slice(start, end);
+  for (const child of [...group.children].reverse()) {
+    if (child.type !== 'Attribute' && !(child.type === 'AttributeList' && child.kind === 'Graph')) continue;
+    const from = child.location.start.offset - start;
+    const to = child.location.end.offset - start;
+    body = body.slice(0, from) + body.slice(to);
+  }
+  return body;
+}
+
+export function planDeletion(dot, type, location) {
+  if (!['node', 'edge', 'group'].includes(type)) throw new Error(`Unsupported element type: ${type}`);
+  const graph = read(dot);
+  const candidates = [];
+  walk(graph, (item) => {
+    if (item.type === { node: 'Node', edge: 'Edge', group: 'Subgraph' }[type] && sameLocation(location, item)) {
+      candidates.push(item);
+    }
+  });
+  let nodeId;
+  if (type === 'node') {
+    const selected = inspectGraph(dot).nodes.filter((node) => sameLocation(location, node));
+    if (selected.length !== 1) throw new Error('node location was not found or is ambiguous');
+    nodeId = selected[0].id;
+  } else if (candidates.length !== 1 || (type === 'group' && !candidates[0].id?.value.startsWith('cluster_'))) {
+    throw new Error(`${type} location was not found or is ambiguous`);
+  }
+
+  const removed = [];
+  if (type === 'node') {
+    walk(graph, (item) => {
+      if ((item.type === 'Node' && item.id.value === nodeId) ||
+          (item.type === 'Edge' && edgeReferences(item, nodeId))) removed.push(item);
+    });
+  } else {
+    removed.push(candidates[0]);
+  }
+  const changes = removed.map((item) => ({
+    start: item.location.start.offset, end: item.location.end.offset, value: '',
+  }));
+  const next = patch(dot, changes);
+  const before = inspectGraph(dot);
+  const after = inspectGraph(next);
+  const remainingIds = new Set(after.nodes.map((node) => node.id));
+  const counts = {
+    nodes: new Set(before.nodes.map((node) => node.id).filter((id) => !remainingIds.has(id))).size,
+    arrows: before.edges.length - after.edges.length,
+    groups: before.groups.length - after.groups.length,
+  };
+  return {
+    counts,
+    deleted: next,
+    ...(type === 'group' && {
+      kept: patch(dot, [{
+        start: candidates[0].location.start.offset,
+        end: candidates[0].location.end.offset,
+        value: keepGroupChildren(dot, candidates[0]),
+      }]),
+    }),
+  };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createElement, inspectGraph, updateElement } from './dot.js';
+import { createElement, inspectGraph, planDeletion, updateElement } from './dot.js';
 
 describe('inspectGraph', () => {
   it('finds nested groups, explicit and implicit nodes, and edges', () => {
@@ -99,6 +99,93 @@ describe('updateElement', () => {
     expect(updated).toContain('  b;');
   });
 
+});
+
+describe('planDeletion', () => {
+    it('removes all declarations of a selected node ID and its connected arrows, including complex arrows', () => {
+      const dot = 'digraph { a [label="A"]; a; b; a -> b; a:p -> c; b -> {a d}; b -> d; }';
+      const node = inspectGraph(dot).nodes.find((item) => item.id === 'a');
+      const { counts, deleted } = planDeletion(dot, 'node', node.location);
+      expect(counts).toEqual({ nodes: 2, arrows: 3, groups: 0 });
+      expect(deleted).toContain('b;');
+      expect(deleted).toContain('b -> d;');
+      expect(deleted).not.toMatch(/\ba(?:\s*(?:;|\[|->)|:)/);
+      expect(inspectGraph(deleted).nodes.map((item) => item.id)).toEqual(['b', 'd']);
+    });
+
+    it('deletes an implicit node by removing all its referencing arrows', () => {
+      const dot = 'digraph { a -> b; c -> b; c -> d; }';
+      const node = inspectGraph(dot).nodes.find((item) => item.id === 'b');
+      const { counts, deleted } = planDeletion(dot, 'node', node.location);
+      expect(counts).toEqual({ nodes: 2, arrows: 2, groups: 0 });
+      expect(deleted).toContain('c -> d;');
+      expect(inspectGraph(deleted).nodes.map((item) => item.id)).toEqual(['c', 'd']);
+    });
+
+    it('removes a node ID across groups while retaining unrelated group contents', () => {
+      const dot = 'digraph { subgraph cluster_a { a; a -> b; } subgraph cluster_b { a; c; c -> a; } }';
+      const node = inspectGraph(dot).nodes.find((item) => item.id === 'a');
+      const { counts, deleted } = planDeletion(dot, 'node', node.location);
+      expect(counts).toEqual({ nodes: 2, arrows: 2, groups: 0 });
+      expect(inspectGraph(deleted).nodes.map((item) => item.id)).toEqual(['c']);
+      expect(inspectGraph(deleted).groups.map((item) => item.id)).toEqual(['cluster_a', 'cluster_b']);
+      expect(deleted).toContain('c;');
+    });
+
+    it('deletes only the selected arrow among duplicates, including complex arrows', () => {
+      const dot = 'graph { a -- b -- c; a -- b -- c; b -- c; }';
+      const edge = inspectGraph(dot).edges[1];
+      const { counts, deleted } = planDeletion(dot, 'edge', edge.location);
+      expect(counts).toEqual({ nodes: 0, arrows: 1, groups: 0 });
+      expect(inspectGraph(deleted).edges).toHaveLength(2);
+      expect(deleted.match(/a -- b -- c;/g)).toHaveLength(1);
+      expect(deleted).toContain('b -- c;');
+    });
+
+    it('removes a nested group and its descendants without touching neighboring statements', () => {
+      const dot = 'digraph { outside; subgraph cluster_a { a; subgraph cluster_b { b; } a -> b; } outside -> x; }';
+      const group = inspectGraph(dot).groups[0];
+      const { counts, deleted } = planDeletion(dot, 'group', group.location);
+      expect(counts).toEqual({ nodes: 2, arrows: 1, groups: 2 });
+      expect(deleted).toContain('outside;');
+      expect(deleted).toContain('outside -> x;');
+      expect(inspectGraph(deleted).groups).toHaveLength(0);
+    });
+
+    it('keeps children of a group but drops group-scoped attributes', () => {
+      const dot = 'digraph { subgraph cluster_a { graph [label="Only group"]; color=red; a [label="A"]; subgraph cluster_b { b; } a -> b; } x; }';
+      const group = inspectGraph(dot).groups[0];
+      const { kept, deleted } = planDeletion(dot, 'group', group.location);
+      expect(kept).not.toContain('cluster_a');
+      expect(kept).not.toContain('Only group');
+      expect(kept).not.toContain('color=red');
+      expect(kept).toContain('a [label="A"]; subgraph cluster_b { b; } a -> b;');
+      expect(kept).toContain('x;');
+      expect(inspectGraph(kept).groups.map((item) => item.id)).toEqual(['cluster_b']);
+      expect(deleted).not.toContain('cluster_b');
+    });
+
+    it('keeps child statements in the parent group when deleting a nested wrapper', () => {
+      const dot = 'digraph { subgraph cluster_parent { subgraph cluster_child { a; a -> b; } c; } }';
+      const child = inspectGraph(dot).groups.find((item) => item.id === 'cluster_child');
+      const { kept } = planDeletion(dot, 'group', child.location);
+      expect(inspectGraph(kept).groups.map((item) => item.id)).toEqual(['cluster_parent']);
+      expect(inspectGraph(kept).edges).toHaveLength(1);
+      expect(kept).toContain('a; a -> b;');
+      expect(kept).toContain('c;');
+    });
+
+    it('rejects stale locations and unsupported types without changing the source', () => {
+      const dot = 'digraph { a; }';
+      const location = { start: { offset: 100 }, end: { offset: 101 } };
+      expect(() => planDeletion(dot, 'node', location)).toThrow(/location/);
+      expect(() => planDeletion(dot, 'group', location)).toThrow(/location/);
+      expect(() => planDeletion(dot, 'vertex', location)).toThrow(/Unsupported/);
+      expect(dot).toBe('digraph { a; }');
+    });
+});
+
+describe('updateElement', () => {
   it('updates only endpoints and selected edge attributes', () => {
     const dot = 'graph { a -- b [weight=5, label="old"]; }';
     const edge = inspectGraph(dot).edges[0];

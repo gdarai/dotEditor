@@ -21,6 +21,8 @@ On the first visit, Config opens automatically. Choose **New graph** to start wi
 
 Edit has separate actions to create or edit nodes, groups and arrows, plus a **Raw DOT** card for arbitrary DOT source. Existing implicit nodes (nodes only mentioned by an edge) are selectable. Group means a Graphviz `subgraph cluster_*`; arrow means `->` in a digraph and `--` in an undirected graph. Structured forms edit only the selected declaration and leave unrelated source, comments and unknown attributes untouched. Chained, port and subgraph-endpoint edges should be edited in Raw DOT: the form will not rewrite them unsafely. Raw edits and loaded DOT must parse before replacing the current graph.
 
+Each existing-element row has a smaller red **Del** button. It opens a confirmation showing how many distinct node IDs, arrow statements and groups will disappear; **Back** is focused by default and changes nothing. Deleting a node ID also deletes all its declarations and connected arrows, including arrows that define an implicit node. An arrow's Del removes only that arrow, even if it is too complex for the edit form. For groups, **Keep Elements** removes the group wrapper and moves its contained nodes, arrows and nested groups into the parent (without the deleted group's styling), while red **Delete Elements** removes the whole group subtree. Only a confirmed choice saves the changed graph.
+
 | Element | Required | Optional editable attributes |
 |---|---|---|
 | Node | ID | Label, shape, style, outline color, fill color |

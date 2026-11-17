@@ -48,6 +48,23 @@ describe('App', () => {
     expect(readColors()).toEqual(['#123456'])
   })
 
+  it('confirms deletion before persisting a node and its connected arrows', async () => {
+    const dot = 'digraph G { a; a -> b; b -> c; }'
+    localStorage.setItem('dotEditor:graph', dot)
+    render(<App />)
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit node' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Del node a' }))
+    expect(screen.getByText('Will delete 1 nodes, 1 arrows and 0 groups.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(localStorage.getItem('dotEditor:graph')).toBe(dot)
+    await userEvent.click(screen.getByRole('button', { name: 'Del node a' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    expect(localStorage.getItem('dotEditor:graph')).toContain('b -> c;')
+    expect(localStorage.getItem('dotEditor:graph')).not.toContain('a -> b;')
+    expect(screen.queryByRole('button', { name: 'Del node a' })).not.toBeInTheDocument()
+  })
+
   it('prefills color memory after loading a remote graph', async () => {
     loadGraph.mockResolvedValue('digraph G { a -> b [color="#abcdef"]; }')
     render(<App />)
