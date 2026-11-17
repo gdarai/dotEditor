@@ -1,4 +1,4 @@
 {
-  "saveApi": "save",
-  "loadApi": "load"
+  "saveApi": "setData",
+  "loadApi": "getData"
 }
