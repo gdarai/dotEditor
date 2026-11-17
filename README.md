@@ -29,9 +29,9 @@ Each existing-element row has a smaller red **Del** button. It opens a confirmat
 | Group | `cluster_*` ID | Label, style, outline color, background color |
 | Arrow | Source and target IDs | Label, style, color, arrowhead (digraph only) |
 
-In New arrow and Edit arrow, Source and Target suggest existing node and group IDs, including implicit nodes referenced by arrows. Suggestions are deduplicated and filtered as you type; you can also enter a new ID freely.
+In New arrow and Edit arrow, Source and Target suggest existing node and group IDs, including implicit nodes referenced by arrows. Suggestions are deduplicated and filtered as you type; you can also enter a new ID freely. Every New and Edit form has an optional **Parent group** field suggesting existing cluster IDs. Leave it empty to create or move an element at the top level; Edit starts with the element's current group selected. A typed parent ID must identify exactly one existing cluster. Moving a group carries its contents; groups cannot be moved into themselves or their descendants.
 
-Optional values can be cleared; other DOT attributes remain intact. New elements can be placed inside a selected cluster. Editing a node ID changes that declaration, not references elsewhere in the graph; use Raw DOT to make coordinated identifier changes.
+Optional values can be cleared; other DOT attributes remain intact. Editing a node ID changes that declaration, not references elsewhere in the graph; use Raw DOT to make coordinated identifier changes.
 
 Color fields open a popup with the browser color selector and saved-color swatches. The final nonempty color is saved when the popup closes (Close, Escape, or outside click), not on every selection; selecting an already saved color leaves the tray unchanged. Restoring, loading, or applying a graph adds explicit `#RRGGBB` node, arrow, and group colors to available tray slots after existing saved colors. Named colors and graph/default attributes are not added automatically.
 

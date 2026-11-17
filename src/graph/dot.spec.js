@@ -86,6 +86,16 @@ describe('createElement', () => {
   it('requires cluster IDs when creating groups', () => {
     expect(() => createElement('digraph {}', 'group', { id: 'ordinary' })).toThrow(/cluster_/);
   });
+
+  it('places new elements by group ID or in the root when empty', () => {
+    const dot = 'digraph { subgraph cluster_a {} }';
+    const nested = createElement(dot, 'node', { id: 'n', parentId: 'cluster_a' });
+    expect(inspectGraph(nested).nodes[0].parentId).toBe('cluster_a');
+    expect(inspectGraph(createElement(dot, 'node', { id: 'n', parentId: '' })).nodes[0].parentId).toBeUndefined();
+    expect(inspectGraph(createElement(dot, 'edge', { source: 'a', target: 'b', parentId: 'cluster_a' })).edges[0].parentId).toBe('cluster_a');
+    expect(inspectGraph(createElement(dot, 'group', { id: 'cluster_b', parentId: 'cluster_a' })).groups[1].parentId).toBe('cluster_a');
+    expect(() => createElement(dot, 'node', { id: 'n', parentId: 'missing' })).toThrow(/missing or ambiguous/);
+  });
 });
 
 describe('updateElement', () => {
@@ -208,6 +218,79 @@ describe('updateElement', () => {
     const updated = updateElement(dot, 'node', implicit.location, { label: 'B' });
     expect(updated).toContain('a -> b;\n      "b" [label="B"];\n    }\n  }\n  b -> c;');
     expect(updated.match(/"b" \[label=/g)).toHaveLength(1);
+  });
+
+  it('reports the containing cluster of nested and implicit elements', () => {
+    const graph = inspectGraph('digraph { subgraph cluster_a { subgraph wrapper { a; a -> b; subgraph cluster_b { c; } } } }');
+    expect(graph.nodes.find((node) => node.id === 'a').parentId).toBe('cluster_a');
+    expect(graph.nodes.find((node) => node.id === 'b').parentId).toBe('cluster_a');
+    expect(graph.edges[0].parentId).toBe('cluster_a');
+    expect(graph.groups.find((group) => group.id === 'cluster_b').parentId).toBe('cluster_a');
+  });
+
+  it('moves a node between clusters and to the root, retaining attributes and other source', () => {
+    const dot = 'digraph {\n  subgraph cluster_a { a [custom=keep, label=old]; }\n  // untouched\n  subgraph cluster_b { b; }\n  a -> b;\n}';
+    const node = inspectGraph(dot).nodes.find((entry) => entry.id === 'a');
+    const moved = updateElement(dot, 'node', node.location, { label: 'New', parentId: 'cluster_b' });
+    expect(inspectGraph(moved).nodes.find((entry) => entry.id === 'a').parentId).toBe('cluster_b');
+    expect(moved).toContain('a [custom=keep, label="New"]');
+    expect(moved).toContain('// untouched');
+    expect(moved).toContain('a -> b;');
+    const toRoot = updateElement(moved, 'node', inspectGraph(moved).nodes.find((entry) => entry.id === 'a').location, { parentId: '' });
+    expect(inspectGraph(toRoot).nodes.find((entry) => entry.id === 'a').parentId).toBeUndefined();
+  });
+
+  it('moves arrows and nested groups without losing their contents', () => {
+    const dot = 'digraph { subgraph cluster_a { subgraph cluster_child { c; } a -> b [weight=2]; } subgraph cluster_b {} }';
+    const arrow = inspectGraph(dot).edges[0];
+    const movedArrow = updateElement(dot, 'edge', arrow.location, { parentId: 'cluster_b', label: 'Link' });
+    expect(inspectGraph(movedArrow).edges[0].parentId).toBe('cluster_b');
+    expect(movedArrow).toContain('weight=2');
+    const child = inspectGraph(movedArrow).groups.find((entry) => entry.id === 'cluster_child');
+    const intoB = updateElement(movedArrow, 'group', child.location, { parentId: 'cluster_b' });
+    expect(inspectGraph(intoB).groups.find((entry) => entry.id === 'cluster_child').parentId).toBe('cluster_b');
+    const movedGroup = updateElement(intoB, 'group', inspectGraph(intoB).groups.find((entry) => entry.id === 'cluster_child').location, { parentId: '' });
+    expect(inspectGraph(movedGroup).groups.find((entry) => entry.id === 'cluster_child').parentId).toBeUndefined();
+    expect(inspectGraph(movedGroup).nodes.find((entry) => entry.id === 'c').parentId).toBe('cluster_child');
+  });
+
+  it('keeps unchanged parents in place and rejects invalid destinations or group cycles', () => {
+    const dot = 'digraph { subgraph cluster_a { subgraph cluster_child { a; } } subgraph cluster_b {} }';
+    const group = inspectGraph(dot).groups.find((entry) => entry.id === 'cluster_a');
+    expect(updateElement(dot, 'group', group.location, { parentId: '' })).toBe(dot);
+    expect(() => updateElement(dot, 'group', group.location, { parentId: 'cluster_child' })).toThrow(/descendant/);
+    expect(() => updateElement(dot, 'group', group.location, { parentId: 'cluster_a' })).toThrow(/itself/);
+    const node = inspectGraph(dot).nodes[0];
+    expect(updateElement(dot, 'node', node.location, { parentId: 'cluster_child' })).toBe(dot);
+    expect(() => updateElement(dot, 'node', node.location, { parentId: 'missing' })).toThrow(/missing or ambiguous/);
+    const duplicates = 'digraph { a; subgraph cluster_x {} subgraph cluster_x {} }';
+    expect(() => updateElement(duplicates, 'node', inspectGraph(duplicates).nodes[0].location, { parentId: 'cluster_x' })).toThrow(/ambiguous/);
+  });
+
+  it('materializes implicit nodes in a chosen cluster or the root', () => {
+    const dot = 'digraph { subgraph cluster_a { a -> b; } subgraph cluster_b {} }';
+    const implicit = inspectGraph(dot).nodes.find((entry) => entry.id === 'a');
+    expect(inspectGraph(updateElement(dot, 'node', implicit.location, { parentId: 'cluster_b' })).nodes.find((entry) => entry.id === 'a').parentId).toBe('cluster_b');
+    expect(inspectGraph(updateElement(dot, 'node', implicit.location, { parentId: '' })).nodes.find((entry) => entry.id === 'a').parentId).toBeUndefined();
+  });
+
+  it('keeps an implicit node in its selected cluster when names are duplicated', () => {
+    const dot = 'digraph { subgraph cluster_x { a -> b; } subgraph cluster_x { c; } }';
+    const implicit = inspectGraph(dot).nodes.find((entry) => entry.id === 'a');
+    const updated = updateElement(dot, 'node', implicit.location, { label: 'A', parentId: 'cluster_x' });
+    expect(updated.indexOf('"a" [label="A"]')).toBeLessThan(updated.indexOf('subgraph cluster_x { c; }'));
+    expect(inspectGraph(updated).nodes.find((entry) => entry.id === 'a').parentId).toBe('cluster_x');
+  });
+
+  it('moves nodes out of ordinary subgraphs when the parent ID is empty', () => {
+    const dot = 'digraph { subgraph wrapper { a; b -> c; } }';
+    const node = inspectGraph(dot).nodes.find((entry) => entry.id === 'a');
+    const moved = updateElement(dot, 'node', node.location, { parentId: '' });
+    expect(moved.indexOf('a;')).toBeGreaterThan(moved.indexOf('subgraph wrapper'));
+    expect(moved.indexOf('a;')).toBeGreaterThan(moved.indexOf('}'));
+    const implicit = inspectGraph(dot).nodes.find((entry) => entry.id === 'b');
+    const materialized = updateElement(dot, 'node', implicit.location, { parentId: '' });
+    expect(materialized.indexOf('"b";')).toBeGreaterThan(materialized.indexOf('}'));
   });
 
   it('updates a group ID without touching its content', () => {

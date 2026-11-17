@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { planDeletion } from '../graph/dot.js'
+import { createElement, planDeletion, updateElement } from '../graph/dot.js'
 import EditDialog from './EditDialog.jsx'
 
 vi.mock('../graph/dot.js', () => ({
   inspectGraph: () => ({
     directed: true,
     nodes: [
-      { id: 'a', location: { start: { offset: 1 } }, attributes: {} },
-      { id: 'b', implicit: true, location: { start: { offset: 2 } }, attributes: {} },
+      { id: 'a', location: { start: { offset: 1 } }, attributes: {}, parentId: 'cluster_team' },
+      { id: 'b', implicit: true, location: { start: { offset: 2 } }, attributes: {}, parentId: 'cluster_team' },
       { id: 'cluster_team', location: { start: { offset: 3 } }, attributes: {} },
     ],
     groups: [
@@ -128,10 +128,11 @@ describe('EditDialog', () => {
     expect(source).toBeRequired()
     expect(target).toBeRequired()
     expect(source.getAttribute('list')).not.toBe(target.getAttribute('list'))
-    for (const list of screen.getAllByRole('listbox', { hidden: true })) {
+    for (const list of [source, target].map(input => document.getElementById(input.getAttribute('list')))) {
       expect([source.getAttribute('list'), target.getAttribute('list')]).toContain(list.id)
       expect(within(list).getAllByRole('option', { hidden: true }).map(option => option.value)).toEqual(['a', 'b', 'cluster_team'])
     }
+    expect(screen.getByRole('combobox', { name: 'Parent group' })).toHaveValue('')
   })
 
   it('allows a new arrow to use an existing ID and a typed ID', async () => {
@@ -162,10 +163,64 @@ describe('EditDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'a → b' }))
     expect(screen.getByRole('combobox', { name: 'Source' })).toHaveValue('a')
     expect(screen.getByRole('combobox', { name: 'Target' })).toHaveValue('b')
-    expect(screen.getAllByRole('listbox', { hidden: true })).toHaveLength(2)
+    expect(screen.getAllByRole('listbox', { hidden: true })).toHaveLength(3)
     await userEvent.clear(screen.getByRole('combobox', { name: 'Target' }))
     await userEvent.type(screen.getByRole('combobox', { name: 'Target' }), 'cluster_team')
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(onCommit).toHaveBeenCalledWith('digraph { a [label="A"]; }')
+  })
+
+  it('uses group ID suggestions for every New form and permits an empty parent', async () => {
+    for (const [action, fill] of [
+      ['(+) Node', async () => userEvent.type(screen.getByLabelText('Node ID'), 'n')],
+      ['(+) Group', async () => userEvent.type(screen.getByLabelText('Cluster ID'), 'new')],
+      ['(+) Arrow', async () => {
+        await userEvent.type(screen.getByRole('combobox', { name: 'Source' }), 'a')
+        await userEvent.type(screen.getByRole('combobox', { name: 'Target' }), 'b')
+      }],
+    ]) {
+      await userEvent.click(screen.getByRole('button', { name: action }))
+      const parent = screen.getByRole('combobox', { name: 'Parent group' })
+      expect(parent).not.toBeRequired()
+      expect(parent).toHaveValue('')
+      expect(within(document.getElementById(parent.getAttribute('list'))).getAllByRole('option', { hidden: true }).map(option => option.value)).toEqual(['cluster_team'])
+      await fill()
+      await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+      expect(createElement).toHaveBeenLastCalledWith('digraph { a; }', expect.any(String), expect.objectContaining({ parentId: '' }))
+    }
+  })
+
+  it('prefills the current group when editing a node and allows clearing it', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit node' }))
+    await userEvent.click(screen.getByRole('button', { name: 'a' }))
+    const parent = screen.getByRole('combobox', { name: 'Parent group' })
+    expect(parent).toHaveValue('cluster_team')
+    await userEvent.clear(parent)
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(updateElement).toHaveBeenCalledWith('digraph { a; }', 'node', { start: { offset: 1 } }, expect.objectContaining({ parentId: '' }))
+  })
+
+  it('lets edit group and edit arrow select a different parent ID', async () => {
+    for (const [action, item, type] of [
+      ['Edit group', 'cluster_team', 'group'],
+      ['Edit arrow', 'a → b', 'edge'],
+    ]) {
+      await userEvent.click(screen.getByRole('button', { name: action }))
+      await userEvent.click(screen.getByRole('button', { name: item }))
+      const parent = screen.getByRole('combobox', { name: 'Parent group' })
+      await userEvent.type(parent, 'cluster_team')
+      await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+      expect(updateElement).toHaveBeenLastCalledWith('digraph { a; }', type, expect.any(Object), expect.objectContaining({ parentId: 'cluster_team' }))
+    }
+  })
+
+  it('shows invalid parent errors without committing', async () => {
+    createElement.mockImplementationOnce(() => { throw new Error('Parent group ID is missing or ambiguous') })
+    await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
+    await userEvent.type(screen.getByLabelText('Node ID'), 'n')
+    await userEvent.type(screen.getByRole('combobox', { name: 'Parent group' }), 'missing')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Parent group ID is missing or ambiguous')
+    expect(onCommit).not.toHaveBeenCalled()
   })
 })

@@ -46,7 +46,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     setAction(next)
     setSelected(null)
     setPendingDeletion(null)
-    setFields(next === 'new-group' ? { id: 'cluster_' } : {})
+    setFields({ parentId: '', ...(next === 'new-group' && { id: 'cluster_' }) })
     setError('')
     if (next === 'raw') setRaw(dot)
     setPage(next === 'raw' ? 'raw' : next.startsWith('edit-') ? 'select' : 'form')
@@ -59,6 +59,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
         ? { source: element.source, target: element.target }
         : { id: element.id }),
       ...element.attributes,
+      parentId: element.parentId || '',
     })
     setError('')
     setPage('form')
@@ -82,12 +83,9 @@ export default function EditDialog({ dot, onCommit, onClose }) {
   function commit(event) {
     event.preventDefault()
     try {
-      const { parentOffset, ...values } = fields
-      const parent = graph.groups.find(group => `${group.location.start.offset}` === parentOffset)
-      const data = parent ? { ...values, parentLocation: parent.location } : values
       const next = editing
-        ? updateElement(dot, type, selected.location, data)
-        : createElement(dot, type, data)
+        ? updateElement(dot, type, selected.location, fields)
+        : createElement(dot, type, fields)
       onCommit(next)
       setError('')
       setPage('home')
@@ -168,7 +166,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
         <form id="edit-element-form" onSubmit={commit}>
           <div className="fields">
             {type !== 'edge' && <TextField label={type === 'group' ? 'Cluster ID' : 'Node ID'} required value={fields.id || ''} onChange={value => change('id', value)} />}
-            {!editing && <OptionsSelectBox label="Parent group" value={fields.parentOffset || ''} options={graph.groups.map(group => ({ value: `${group.location.start.offset}`, label: group.id }))} onChange={value => change('parentOffset', value)} />}
+            <InputID label="Parent group" value={fields.parentId || ''} options={graph.groups.map(group => group.id)} onChange={value => change('parentId', value)} />
             {type === 'edge' && <>
               <InputID label="Source" required value={fields.source || ''} options={ids} onChange={value => change('source', value)} />
               <InputID label="Target" required value={fields.target || ''} options={ids} onChange={value => change('target', value)} />

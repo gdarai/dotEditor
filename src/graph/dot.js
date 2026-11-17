@@ -51,10 +51,12 @@ function sameLocation(a, b) {
   return b.location?.start.offset === start && b.location?.end.offset === end;
 }
 
-function walk(parent, visit) {
+function walk(parent, visit, containingGroup = null) {
   for (const child of parent.children) {
-    visit(child, parent);
-    if (child.type === 'Subgraph') walk(child, visit);
+    visit(child, parent, containingGroup);
+    if (child.type === 'Subgraph') {
+      walk(child, visit, child.id?.value.startsWith('cluster_') ? child : containingGroup);
+    }
   }
 }
 
@@ -83,12 +85,15 @@ export function inspectGraph(dot) {
   const edges = [];
   const explicit = new Set();
   const referenced = new Map();
-  walk(graph, (item) => {
+  walk(graph, (item, _parent, containingGroup) => {
+    const placement = containingGroup
+      ? { parentId: containingGroup.id.value, parentLocation: containingGroup.location }
+      : {};
     if (item.type === 'Node') {
       explicit.add(item.id.value);
-      nodes.push({ id: item.id.value, location: item.location, attributes: attributesFor('node', item) });
+      nodes.push({ id: item.id.value, location: item.location, attributes: attributesFor('node', item), ...placement });
     } else if (item.type === 'Subgraph' && item.id?.value.startsWith('cluster_')) {
-      groups.push({ id: item.id.value, location: item.location, attributes: attributesFor('group', item) });
+      groups.push({ id: item.id.value, location: item.location, attributes: attributesFor('group', item), ...placement });
     } else if (item.type === 'Edge') {
       const simple = item.targets.length === 2 && item.targets.every(reference);
       edges.push({
@@ -96,18 +101,19 @@ export function inspectGraph(dot) {
         target: item.targets[1].type === 'NodeRef' ? item.targets[1].id.value : '',
         location: item.location,
         attributes: attributesFor('edge', item),
+        ...placement,
         ...(!simple && { complex: true }),
       });
       for (const target of item.targets) {
         const refs = target.type === 'NodeRef' ? [target] : target.children;
         for (const ref of refs) {
-          if (!referenced.has(ref.id.value)) referenced.set(ref.id.value, ref.location);
+          if (!referenced.has(ref.id.value)) referenced.set(ref.id.value, { location: ref.location, ...placement });
         }
       }
     }
   });
-  for (const [id, location] of referenced) {
-    if (!explicit.has(id)) nodes.push({ id, location, attributes: {}, implicit: true });
+  for (const [id, reference] of referenced) {
+    if (!explicit.has(id)) nodes.push({ id, ...reference, attributes: {}, implicit: true });
   }
   return { directed: graph.directed, nodes, groups, edges };
 }
@@ -128,6 +134,7 @@ function attrs(type, data) {
 }
 
 function parentFor(graph, data) {
+  if (data.parentId === '') return graph;
   if (data.parentLocation != null) {
     const parents = [];
     walk(graph, (item) => {
@@ -137,6 +144,7 @@ function parentFor(graph, data) {
     return parents[0];
   }
   if (data.parentId != null) {
+    text(data.parentId, 'parentId');
     const parents = [];
     walk(graph, (item) => {
       if (item.type === 'Subgraph' && item.id?.value === data.parentId) parents.push(item);
@@ -274,10 +282,13 @@ function attributeChanges(dot, type, item, data, after) {
 export function updateElement(dot, type, location, data) {
   ensureData(type, data);
   const graph = read(dot);
+  if (data.parentLocation != null) throw new Error('Use a parent group ID when moving an existing element');
   const candidates = [];
-  walk(graph, (item) => {
+  let actualParent;
+  walk(graph, (item, parent) => {
     if (item.type === { group: 'Subgraph', node: 'Node', edge: 'Edge' }[type] && sameLocation(location, item)) {
       candidates.push(item);
+      actualParent = parent;
     }
   });
   if (candidates.length !== 1 && type === 'node') {
@@ -294,16 +305,29 @@ export function updateElement(dot, type, location, data) {
           }
         }
       });
+      const { parentId, ...nodeData } = data;
       return createElement(dot, 'node', {
-        ...data,
+        ...nodeData,
         id: implicit.id,
-        ...(containingGroup && { parentLocation: containingGroup.location }),
+        ...(parentId != null && (parentId !== implicit.parentId || (parentId === '' && containingGroup))
+          ? { parentId }
+          : containingGroup ? { parentLocation: containingGroup.location } : {}),
       });
     }
   }
   if (candidates.length !== 1) throw new Error(`${type} location was not found or is ambiguous`);
   const item = candidates[0];
-  if (data.parentLocation != null || data.parentId != null) throw new Error('Moving existing elements between groups is unsupported');
+  const currentParent = inspectGraph(dot)[`${type}s`]?.find((entry) => sameLocation(location, entry))?.parentId ?? '';
+  const moving = data.parentId != null &&
+    (data.parentId !== currentParent || (data.parentId === '' && actualParent.type !== 'Graph'));
+  if (moving) {
+    const destination = parentFor(graph, data);
+    if (type === 'group' && destination !== graph &&
+        destination.location.start.offset >= item.location.start.offset &&
+        destination.location.end.offset <= item.location.end.offset) {
+      throw new Error('A group cannot be moved into itself or a descendant');
+    }
+  }
   const changes = [];
   let after;
   if (type === 'edge') {
@@ -355,7 +379,17 @@ export function updateElement(dot, type, location, data) {
   } else {
     changes.push(...attributeChanges(dot, type, item, data, after));
   }
-  return patch(dot, changes);
+  const updated = patch(dot, changes);
+  if (!moving) return updated;
+  let edited;
+  walk(read(updated), (candidate) => {
+    if (candidate.type === item.type && candidate.location.start.offset === item.location.start.offset) edited = candidate;
+  });
+  if (!edited) throw new Error('Updated element location was not found');
+  const [start, end] = offset(edited.location);
+  const statement = updated.slice(start, end);
+  const without = validated(updated.slice(0, start) + updated.slice(end));
+  return validated(insert(without, parentFor(read(without), data), statement));
 }
 
 function edgeReferences(item, id) {
