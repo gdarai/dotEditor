@@ -70,6 +70,14 @@ describe('EditDialog', () => {
     expect(onCommit).not.toHaveBeenCalled()
   })
 
+  it('keeps the edit form open when Escape closes a color popup', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'New node' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Choose Color' }))
+    await userEvent.keyboard('{Escape}')
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Color color picker' })).not.toBeInTheDocument()
+  })
+
   it('keeps the selected endpoints editable in Edit arrow', async () => {
     await userEvent.click(screen.getByRole('button', { name: 'Edit arrow' }))
     await userEvent.click(screen.getByRole('button', { name: 'a → b' }))

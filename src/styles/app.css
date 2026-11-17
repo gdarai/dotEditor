@@ -51,9 +51,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .field input, .field select, .field textarea { border: 1px solid #8296ab; border-radius: 7px; padding: 8px; width: 100%; background: #fff; color: inherit; }
 .field textarea { min-height: 40dvh; resize: vertical; font: 14px/1.5 monospace; }
 .color-controls { display: flex; gap: 4px; }
-.color-controls input[type=color] { width: 48px; padding: 3px; flex: none; }
+.color-controls button:first-child { width: 48px; padding: 3px; flex: none; }
 .color-controls input[aria-label] { min-width: 0; }
 .color-controls button { padding: 4px 8px; }
+.color-popup { display: grid; gap: 8px; padding: 10px; border: 1px solid #aebccd; border-radius: 9px; background: #fff; box-shadow: 0 6px 20px #132b4830; }
+.color-popup input[type=color] { height: 44px; padding: 3px; }
 .swatches { display: flex; flex-wrap: wrap; gap: 4px; }
 .swatches button { min-height: 30px; width: 30px; padding: 0; }
 .actions, .card-footer { display: flex; flex-wrap: wrap; gap: 8px; }

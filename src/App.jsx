@@ -6,18 +6,33 @@ import ExportPage from './dialogs/ExportPage.jsx'
 import NavigationDialog from './dialogs/NavigationDialog.jsx'
 import { clampPan, moveViewport } from './dialogs/NavigationDialog.utils.js'
 import { inspectGraph } from './graph/dot.js'
-import { readSetting, writeSetting } from './storage.js'
+import { appendColors, readSetting, writeSetting } from './storage.js'
+
+function rememberGraphColors(graph) {
+  const colors = [...graph.nodes, ...graph.groups, ...graph.edges]
+    .flatMap(item => ['color', 'fillcolor', 'bgcolor'].map(key => item.attributes[key]))
+    .filter(color => /^#[0-9a-f]{6}$/i.test(color))
+  appendColors(colors)
+}
 
 function initialState() {
   try {
     const graph = readSetting('graph') || ''
-    if (graph) inspectGraph(graph)
+    const parsed = graph && inspectGraph(graph)
+    let error = ''
+    if (parsed) {
+      try {
+        rememberGraphColors(parsed)
+      } catch (cause) {
+        error = `Could not update color memory: ${cause.message}`
+      }
+    }
     return {
       dot: graph,
       graphName: readSetting('graphName') || '',
       apiUrl: readSetting('apiUrl') || '',
       layout: readSetting('layout') || 'auto',
-      error: '',
+      error,
     }
   } catch (cause) {
     return { dot: '', graphName: '', apiUrl: '', layout: 'auto', error: `Stored graph or settings could not be read: ${cause.message}` }
@@ -40,7 +55,12 @@ export default function App() {
     writeSetting('graph', next)
     setDot(next)
     setViewport({ x: 0, y: 0, zoom: 1 })
-    setError('')
+    try {
+      rememberGraphColors(inspectGraph(next))
+      setError('')
+    } catch (cause) {
+      setError(`Could not update color memory: ${cause.message}`)
+    }
   }
 
   function changeConfig(name, value) {

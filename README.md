@@ -31,6 +31,8 @@ In New arrow and Edit arrow, Source and Target suggest existing node and group I
 
 Optional values can be cleared; other DOT attributes remain intact. New elements can be placed inside a selected cluster. Editing a node ID changes that declaration, not references elsewhere in the graph; use Raw DOT to make coordinated identifier changes.
 
+Color fields open a popup with the browser color selector and saved-color swatches. The final nonempty color is saved when the popup closes (Close, Escape, or outside click), not on every selection; selecting an already saved color leaves the tray unchanged. Restoring, loading, or applying a graph adds explicit `#RRGGBB` node, arrow, and group colors to available tray slots after existing saved colors. Named colors and graph/default attributes are not added automatically.
+
 ## Remote API and export
 
 Edit `src/config.json` before building to change the `saveApi` and `loadApi` endpoint path names (defaults: `save` and `load`). For a base URL `https://example.com/api`, a graph name `my graph`, and API key `secret`, the requests are:
@@ -46,6 +48,6 @@ Response body: raw DOT text
 
 Existing base-URL query parameters are preserved. Save/load require the API URL and graph name; failed requests do not replace the current graph. The key is passed in the URL as required by the API, so use HTTPS and a trusted endpoint. The API key remains in memory for the current page only; the graph name and API URL are stored locally. **Export** attempts to copy the DOT to the clipboard and displays a separate text-only page with Back. If copying is denied, the page displays the error and a Retry copy button; the DOT remains visible for manual copying.
 
-Local storage keys use the `dotEditor:` prefix: `graph`, `graphName`, `layout`, `apiUrl`, and `colors` (the eight most recently used colors). The API key is never stored. Browser storage can be cleared to start fresh.
+Local storage keys use the `dotEditor:` prefix: `graph`, `graphName`, `layout`, `apiUrl`, and `colors` (up to eight saved colors). The API key is never stored. Browser storage can be cleared to start fresh.
 
 Component and dialog tests live beside their `.jsx` files as `.spec.jsx`; graph, API, storage and viewport utilities have adjacent Vitest specs.
