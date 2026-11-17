@@ -26,12 +26,12 @@ describe('EditDialog', () => {
   afterEach(() => { cleanup(); vi.clearAllMocks() })
 
   it('offers distinct create and edit actions', () => {
-    expect(screen.getByRole('button', { name: 'New group' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '(+) Group' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit arrow' })).toBeInTheDocument()
   })
 
   it('creates a node through the focused form', async () => {
-    await userEvent.click(screen.getByRole('button', { name: 'New node' }))
+    await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
     await userEvent.type(screen.getByLabelText('Node ID'), 'b')
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(onCommit).toHaveBeenCalledWith('digraph { a; b; }')
@@ -43,7 +43,7 @@ describe('EditDialog', () => {
   })
 
   it('offers distinct graph IDs in both new-arrow endpoint inputs', async () => {
-    await userEvent.click(screen.getByRole('button', { name: 'New arrow' }))
+    await userEvent.click(screen.getByRole('button', { name: '(+) Arrow' }))
     const source = screen.getByRole('combobox', { name: 'Source' })
     const target = screen.getByRole('combobox', { name: 'Target' })
     expect(source).toBeRequired()
@@ -56,7 +56,7 @@ describe('EditDialog', () => {
   })
 
   it('allows a new arrow to use an existing ID and a typed ID', async () => {
-    await userEvent.click(screen.getByRole('button', { name: 'New arrow' }))
+    await userEvent.click(screen.getByRole('button', { name: '(+) Arrow' }))
     await userEvent.type(screen.getByRole('combobox', { name: 'Source' }), 'b')
     await userEvent.type(screen.getByRole('combobox', { name: 'Target' }), 'new_id')
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
@@ -64,14 +64,14 @@ describe('EditDialog', () => {
   })
 
   it('does not submit an arrow without both endpoints', async () => {
-    await userEvent.click(screen.getByRole('button', { name: 'New arrow' }))
+    await userEvent.click(screen.getByRole('button', { name: '(+) Arrow' }))
     await userEvent.type(screen.getByRole('combobox', { name: 'Source' }), 'a')
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(onCommit).not.toHaveBeenCalled()
   })
 
   it('keeps the edit form open when Escape closes a color popup', async () => {
-    await userEvent.click(screen.getByRole('button', { name: 'New node' }))
+    await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
     await userEvent.click(screen.getByRole('button', { name: 'Choose Color' }))
     await userEvent.keyboard('{Escape}')
     expect(screen.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
