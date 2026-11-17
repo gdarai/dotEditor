@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { createElement, inspectGraph, updateElement } from '../graph/dot.js'
 import ColorPicker from '../components/ColorPicker.jsx'
+import InputID from '../components/InputID.jsx'
 import OptionsSelectBox from '../components/OptionsSelectBox.jsx'
 import useEscapeKey from '../components/useEscapeKey.js'
 import useAutoFocus from '../components/useAutoFocus.js'
@@ -29,6 +30,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
   const [raw, setRaw] = useState(dot)
   const [error, setError] = useState('')
   const graph = inspectGraph(dot)
+  const ids = [...graph.nodes, ...graph.groups].map(item => item.id)
   const type = action.split('-')[1]
   const editing = action.startsWith('edit-')
   const dialogRef = useAutoFocus([page])
@@ -125,8 +127,8 @@ export default function EditDialog({ dot, onCommit, onClose }) {
             {type !== 'edge' && <TextField label={type === 'group' ? 'Cluster ID' : 'Node ID'} required value={fields.id || ''} onChange={value => change('id', value)} />}
             {!editing && <OptionsSelectBox label="Parent group" value={fields.parentOffset || ''} options={graph.groups.map(group => ({ value: `${group.location.start.offset}`, label: group.id }))} onChange={value => change('parentOffset', value)} />}
             {type === 'edge' && <>
-              <TextField label="Source" required value={fields.source || ''} onChange={value => change('source', value)} />
-              <TextField label="Target" required value={fields.target || ''} onChange={value => change('target', value)} />
+              <InputID label="Source" required value={fields.source || ''} options={ids} onChange={value => change('source', value)} />
+              <InputID label="Target" required value={fields.target || ''} options={ids} onChange={value => change('target', value)} />
             </>}
             <TextField label="Label" value={fields.label || ''} onChange={value => change('label', value)} />
             {type === 'node' && <SelectField label="Shape" value={fields.shape || ''} choices={['box', 'ellipse', 'circle', 'diamond', 'plaintext']} onChange={value => change('shape', value)} />}

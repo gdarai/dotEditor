@@ -27,6 +27,8 @@ Edit has separate actions to create or edit nodes, groups and arrows, plus a **R
 | Group | `cluster_*` ID | Label, style, outline color, background color |
 | Arrow | Source and target IDs | Label, style, color, arrowhead (digraph only) |
 
+In New arrow and Edit arrow, Source and Target suggest existing node and group IDs, including implicit nodes referenced by arrows. Suggestions are deduplicated and filtered as you type; you can also enter a new ID freely.
+
 Optional values can be cleared; other DOT attributes remain intact. New elements can be placed inside a selected cluster. Editing a node ID changes that declaration, not references elsewhere in the graph; use Raw DOT to make coordinated identifier changes.
 
 ## Remote API and export
