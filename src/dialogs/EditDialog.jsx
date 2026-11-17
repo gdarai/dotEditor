@@ -8,8 +8,9 @@ import useAutoFocus from '../components/useAutoFocus.js'
 
 const TYPES = { node: 'node', group: 'group', edge: 'arrow' }
 const ACTIONS = [
-  ['new-node', 'New node'], ['new-group', 'New group'], ['new-edge', 'New arrow'],
-  ['edit-node', 'Edit node'], ['edit-group', 'Edit group'], ['edit-edge', 'Edit arrow'],
+  ['new-node', '(+) Node'], ['edit-node', 'Edit node'],
+  ['new-edge', '(+) Arrow'], ['edit-edge', 'Edit arrow'],
+  ['new-group', '(+) Group'], ['edit-group', 'Edit group'],
   ['raw', 'Raw DOT'],
 ]
 
