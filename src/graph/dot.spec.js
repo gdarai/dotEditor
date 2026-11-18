@@ -162,6 +162,63 @@ describe('planDeletion', () => {
       expect(inspectGraph(deleted).groups).toHaveLength(0);
     });
 
+    it('removes incoming and outgoing arrows connected to nodes in nested groups', () => {
+      const dot = 'digraph { outside; subgraph cluster_a { a; subgraph cluster_b { b; } a -> b; } outside -> b; a -> outside; outside -> other; }';
+      const group = inspectGraph(dot).groups[0];
+      const { counts, deleted, kept } = planDeletion(dot, 'group', group.location);
+      expect(counts).toEqual({ nodes: 2, arrows: 3, groups: 2 });
+      expect(inspectGraph(deleted).edges.map(({ source, target }) => [source, target])).toEqual([['outside', 'other']]);
+      expect(inspectGraph(deleted).nodes.map((node) => node.id)).toEqual(['outside', 'other']);
+      expect(inspectGraph(kept).edges).toHaveLength(4);
+    });
+
+    it('deletes a nested group and its arrows in an ancestor without deleting the ancestor', () => {
+      const dot = 'digraph { subgraph cluster_parent { parent; subgraph cluster_child { child; } parent -> child; parent -> safe; } outside -> child; }';
+      const child = inspectGraph(dot).groups.find((group) => group.id === 'cluster_child');
+      const { counts, deleted } = planDeletion(dot, 'group', child.location);
+      expect(counts).toEqual({ nodes: 1, arrows: 2, groups: 1 });
+      expect(inspectGraph(deleted).groups.map((group) => group.id)).toEqual(['cluster_parent']);
+      expect(inspectGraph(deleted).edges.map(({ source, target }) => [source, target])).toEqual([['parent', 'safe']]);
+      expect(inspectGraph(deleted).nodes.map((node) => node.id).sort()).toEqual(['outside', 'parent', 'safe']);
+    });
+
+    it('removes complex external arrows referencing nested nodes and group IDs', () => {
+      const dot = 'digraph { subgraph cluster_a { subgraph cluster_b { inner; } } outside; outside -> inner:p; outside -> {inner other}; cluster_b -> outside; outside -> cluster_a; inner -> other -> outside; outside -> safe; }';
+      const group = inspectGraph(dot).groups[0];
+      const { counts, deleted } = planDeletion(dot, 'group', group.location);
+      expect(counts).toEqual({ nodes: 3, arrows: 5, groups: 2 });
+      expect(inspectGraph(deleted).edges.map(({ source, target }) => [source, target])).toEqual([['outside', 'safe']]);
+      expect(inspectGraph(deleted).nodes.map((node) => node.id)).toEqual(['outside', 'other', 'safe']);
+      expect(deleted).toContain('"other";');
+    });
+
+    it('preserves declarations outside the group even when they share an inside node ID', () => {
+      const dot = 'digraph { shared [label=outside]; subgraph cluster_a { shared [label=inside]; child; } shared -> neighbor; neighbor -> child; neighbor -> safe; }';
+      const { counts, deleted } = planDeletion(dot, 'group', inspectGraph(dot).groups[0].location);
+      expect(counts).toEqual({ nodes: 1, arrows: 2, groups: 1 });
+      expect(deleted).toContain('shared [label=outside];');
+      expect(inspectGraph(deleted).nodes.map((node) => node.id)).toEqual(['shared', 'neighbor', 'safe']);
+      expect(inspectGraph(deleted).edges.map(({ source, target }) => [source, target])).toEqual([['neighbor', 'safe']]);
+    });
+
+    it('materializes outside implicit endpoints orphaned by removed connecting arrows', () => {
+      const dot = 'digraph { subgraph cluster_a { inner; } outer -> inner; inner -> another; }';
+      const { counts, deleted } = planDeletion(dot, 'group', inspectGraph(dot).groups[0].location);
+      expect(counts).toEqual({ nodes: 1, arrows: 2, groups: 1 });
+      expect(inspectGraph(deleted).nodes.map((node) => node.id)).toEqual(['outer', 'another']);
+      expect(deleted).toContain('"outer";');
+      expect(deleted).toContain('"another";');
+    });
+
+    it('keeps an orphaned outside implicit endpoint in its original parent group', () => {
+      const dot = 'digraph { subgraph cluster_parent { subgraph cluster_child { inner; } outer -> inner; } }';
+      const child = inspectGraph(dot).groups[1];
+      const { deleted } = planDeletion(dot, 'group', child.location);
+      expect(inspectGraph(deleted).nodes).toEqual([
+        expect.objectContaining({ id: 'outer', parentId: 'cluster_parent' }),
+      ]);
+    });
+
     it('keeps children of a group but drops group-scoped attributes', () => {
       const dot = 'digraph { subgraph cluster_a { graph [label="Only group"]; color=red; a [label="A"]; subgraph cluster_b { b; } a -> b; } x; }';
       const group = inspectGraph(dot).groups[0];

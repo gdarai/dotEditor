@@ -466,6 +466,48 @@ export function planDeletion(dot, type, location) {
       if ((item.type === 'Node' && item.id.value === nodeId) ||
           (item.type === 'Edge' && edgeReferences(item, nodeId))) removed.push(item);
     });
+  } else if (type === 'group') {
+    const group = candidates[0];
+    const [start, end] = offset(group.location);
+    const inside = (item) => item.location.start.offset >= start && item.location.end.offset <= end;
+    const before = inspectGraph(dot);
+    const ids = new Set([
+      ...before.nodes.filter(inside).map((node) => node.id),
+      ...before.groups.filter(inside).map((child) => child.id),
+    ]);
+    removed.push(group);
+    const externalEdges = [];
+    walk(graph, (item) => {
+      if (item.type === 'Edge' && !inside(item) && [...ids].some((id) => edgeReferences(item, id))) {
+        removed.push(item);
+        externalEdges.push(item);
+      }
+    });
+    const without = patch(dot, removed.map((item) => ({
+      start: item.location.start.offset, end: item.location.end.offset, value: '',
+    })));
+    const remaining = new Set(inspectGraph(without).nodes.map((node) => node.id));
+    const outsideIds = before.nodes.filter((node) => node.implicit && !inside(node) && !ids.has(node.id) && !remaining.has(node.id));
+    const missing = outsideIds.filter((node) => externalEdges.some((edge) => edgeReferences(edge, node.id)));
+    const replacements = new Map();
+    for (const node of missing) {
+      const edge = externalEdges.find((item) => edgeReferences(item, node.id));
+      replacements.set(edge, `${replacements.get(edge) ?? ''}${identifier(node.id, 'id')}; `);
+    }
+    const deleted = missing.length ? patch(dot, removed.map((item) => ({
+      start: item.location.start.offset, end: item.location.end.offset, value: replacements.get(item) ?? '',
+    }))) : without;
+    const after = inspectGraph(deleted);
+    const afterIds = new Set(after.nodes.map((node) => node.id));
+    return {
+      counts: {
+        nodes: new Set(before.nodes.map((node) => node.id).filter((id) => !afterIds.has(id))).size,
+        arrows: before.edges.length - after.edges.length,
+        groups: before.groups.length - after.groups.length,
+      },
+      deleted,
+      kept: patch(dot, [{ start, end, value: keepGroupChildren(dot, group) }]),
+    };
   } else {
     removed.push(candidates[0]);
   }
