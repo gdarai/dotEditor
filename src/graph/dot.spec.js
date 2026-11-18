@@ -1,5 +1,64 @@
 import { describe, expect, it } from 'vitest';
-import { createElement, inspectGraph, planDeletion, updateElement } from './dot.js';
+import { createElement, inspectGraph, planDeletion, rearrangeGroup, updateElement } from './dot.js';
+
+describe('rearrangeGroup', () => {
+  it('moves multiple declarations and a complex arrow in one valid update', () => {
+    const dot = 'digraph {\n  // keep\n  a [custom=x]; a; a -> b -> c;\n  subgraph cluster_team { d; }\n  subgraph cluster_other { e; }\n}';
+    const before = inspectGraph(dot);
+    const selected = before.groups[0];
+    const updated = rearrangeGroup(dot, selected.location, [
+      { type: 'node', location: before.nodes.find((node) => node.id === 'a').location, inGroup: true },
+      { type: 'edge', location: before.edges[0].location, inGroup: true },
+      { type: 'node', location: before.nodes.find((node) => node.id === 'd').location, inGroup: false },
+      { type: 'group', location: before.groups[1].location, inGroup: true },
+    ]);
+    const after = inspectGraph(updated);
+    expect(updated).toContain('// keep');
+    expect(updated).toContain('a [custom=x];');
+    expect(after.nodes.filter((node) => node.id === 'a').map((node) => node.parentId)).toContain('cluster_team');
+    expect(after.nodes.find((node) => node.id === 'd').parentId).toBeUndefined();
+    expect(after.edges[0].parentId).toBe('cluster_team');
+    expect(after.edges[0].complex).toBe(true);
+    expect(after.groups.find((group) => group.id === 'cluster_other').parentId).toBe('cluster_team');
+  });
+
+  it('handles nested group moves and materializes implicit nodes without moving their arrows', () => {
+    const dot = 'digraph { subgraph cluster_team { subgraph cluster_child { a -> b; } } c -> d; }';
+    const before = inspectGraph(dot);
+    const updated = rearrangeGroup(dot, before.groups[0].location, [
+      { type: 'group', location: before.groups[1].location, inGroup: false },
+      { type: 'node', location: before.nodes.find((node) => node.id === 'b').location, inGroup: true },
+    ]);
+    const after = inspectGraph(updated);
+    expect(after.groups.find((group) => group.id === 'cluster_child').parentId).toBeUndefined();
+    expect(after.nodes.find((node) => node.id === 'b').parentId).toBe('cluster_team');
+    expect(after.nodes.find((node) => node.id === 'b').implicit).toBeUndefined();
+    expect(after.edges.find((edge) => edge.source === 'a').parentId).toBe('cluster_child');
+  });
+
+  it('rejects duplicate group IDs and attempts to move the selected group', () => {
+    const dot = 'digraph { subgraph cluster_x {} subgraph cluster_x {} }';
+    expect(() => rearrangeGroup(dot, inspectGraph(dot).groups[0].location, [])).toThrow(/unique/);
+    const simple = 'digraph { subgraph cluster_x {} }';
+    const group = inspectGraph(simple).groups[0];
+    expect(() => rearrangeGroup(simple, group.location, [{ type: 'group', location: group.location, inGroup: false }])).toThrow(/selected group/);
+  });
+
+  it('moves a group and its child independently without duplicating either statement', () => {
+    const dot = 'digraph { subgraph cluster_team {} subgraph cluster_other { subgraph cluster_child { a; } } }';
+    const before = inspectGraph(dot);
+    const updated = rearrangeGroup(dot, before.groups[0].location, [
+      { type: 'group', location: before.groups[1].location, inGroup: true },
+      { type: 'group', location: before.groups[2].location, inGroup: true },
+      { type: 'node', location: before.nodes[0].location, inGroup: true },
+    ]);
+    const after = inspectGraph(updated);
+    expect(after.groups.map(group => group.id)).toHaveLength(3);
+    expect(after.groups.find(group => group.id === 'cluster_other').parentId).toBe('cluster_team');
+    expect(after.groups.find(group => group.id === 'cluster_child').parentId).toBe('cluster_team');
+    expect(after.nodes[0].parentId).toBe('cluster_team');
+  });
+});
 
 describe('inspectGraph', () => {
   it('finds nested groups, explicit and implicit nodes, and edges', () => {

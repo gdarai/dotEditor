@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createElement, planDeletion, updateElement } from '../graph/dot.js'
+import { createElement, planDeletion, rearrangeGroup, updateElement } from '../graph/dot.js'
 import EditDialog from './EditDialog.jsx'
 
 vi.mock('../graph/dot.js', () => ({
@@ -19,6 +19,7 @@ vi.mock('../graph/dot.js', () => ({
   }),
   createElement: vi.fn(() => 'digraph { a; b; }'),
   updateElement: vi.fn(() => 'digraph { a [label="A"]; }'),
+  rearrangeGroup: vi.fn(() => 'digraph { moved; }'),
   planDeletion: vi.fn(() => ({
     counts: { nodes: 2, arrows: 1, groups: 1 },
     deleted: 'digraph { deleted; }',
@@ -34,6 +35,18 @@ describe('EditDialog', () => {
   it('offers distinct create and edit actions', () => {
     expect(screen.getByRole('button', { name: '(+) Group' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit arrow' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Rearrange Group' })).toBeInTheDocument()
+  })
+
+  it('uses the dedicated rearrangement dialog and commits only after Submit', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Rearrange Group' }))
+    await userEvent.click(screen.getByRole('button', { name: 'cluster_team' }))
+    await userEvent.click(screen.getByRole('button', { name: /Node a/ }))
+    expect(onCommit).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    expect(rearrangeGroup).toHaveBeenCalledTimes(1)
+    expect(onCommit).toHaveBeenCalledWith('digraph { moved; }')
+    expect(screen.getByRole('heading', { name: 'Edit' })).toBeInTheDocument()
   })
 
   it('opens actions via keyboard shortcuts', async () => {

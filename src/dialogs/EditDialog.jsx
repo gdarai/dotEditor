@@ -6,12 +6,14 @@ import OptionsSelectBox from '../components/OptionsSelectBox.jsx'
 import useEscapeKey from '../components/useEscapeKey.js'
 import useAutoFocus from '../components/useAutoFocus.js'
 import useShortcuts from '../components/useShortcuts.js'
+import RearrangeGroupDialog from './RearrangeGroupDialog.jsx'
 
 const TYPES = { node: 'node', group: 'group', edge: 'arrow' }
 const ACTIONS = [
   ['new-node', '(+) Node', 'N'], ['edit-node', 'Edit node', 'Alt+N'],
   ['new-edge', '(+) Arrow', 'A'], ['edit-edge', 'Edit arrow', 'Alt+A'],
   ['new-group', '(+) Group', 'G'], ['edit-group', 'Edit group', 'Alt+G'],
+  ['rearrange', 'Rearrange Group', ''],
   ['raw', 'Raw DOT', 'R'],
 ]
 
@@ -60,7 +62,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     setFields({ parentId: '', ...(next === 'new-group' && { id: 'cluster_' }) })
     setError('')
     if (next === 'raw') setRaw(dot)
-    setPage(next === 'raw' ? 'raw' : next.startsWith('edit-') ? 'select' : 'form')
+    setPage(next === 'rearrange' ? 'rearrange' : next === 'raw' ? 'raw' : next.startsWith('edit-') ? 'select' : 'form')
   }
 
   function chooseElement(element) {
@@ -89,7 +91,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     setError('')
   }
 
-  useEscapeKey(page === 'home' ? onClose : back)
+  useEscapeKey(page === 'home' ? onClose : back, page !== 'rearrange')
 
   useShortcuts([
     { key: 'n', handler: () => chooseAction('new-node') },
@@ -165,12 +167,14 @@ export default function EditDialog({ dot, onCommit, onClose }) {
   const heading = ACTIONS.find(([key]) => key === action)?.[1]
   const count = pendingDeletion?.counts
 
+  if (page === 'rearrange') return <RearrangeGroupDialog dot={dot} onCommit={onCommit} onBack={() => setPage('home')} />
+
   return (
     <section className="dialog edit-dialog" role="dialog" aria-modal="true" aria-label="Edit" ref={dialogRef}>
       <h2>{page === 'home' ? 'Edit' : page === 'confirm' ? `Delete ${TYPES[type]}?` : heading}</h2>
       {page === 'home' && (
         <div className="action-grid">
-          {ACTIONS.map(([key, label, shortcut]) => <button key={key} type="button" title={`Shortcut: ${shortcut}`} onClick={() => chooseAction(key)}>{label}</button>)}
+          {ACTIONS.map(([key, label, shortcut]) => <button key={key} type="button" title={shortcut ? `Shortcut: ${shortcut}` : undefined} onClick={() => chooseAction(key)}>{label}</button>)}
         </div>
       )}
       {page === 'select' && (

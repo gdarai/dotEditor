@@ -392,6 +392,93 @@ export function updateElement(dot, type, location, data) {
   return validated(insert(without, parentFor(read(without), data), statement));
 }
 
+export function rearrangeGroup(dot, groupLocation, changes) {
+  const graph = read(dot);
+  const inspected = inspectGraph(dot);
+  const ids = inspected.groups.map((group) => group.id);
+  if (new Set(ids).size !== ids.length) throw new Error('Group IDs must be unique to rearrange a group');
+  const selected = inspected.groups.find((group) => sameLocation(groupLocation, group));
+  if (!selected) throw new Error('Selected group location was not found');
+  if (!Array.isArray(changes)) throw new TypeError('Changes must be an array');
+
+  const entries = new Map();
+  for (const [type, items] of [['node', inspected.nodes], ['edge', inspected.edges], ['group', inspected.groups]]) {
+    for (const item of items) entries.set(`${type}:${item.location.start.offset}`, item);
+  }
+  const selectedKey = `group:${selected.location.start.offset}`;
+  const ancestors = new Set([selectedKey]);
+  let parent = selected;
+  while (parent.parentLocation) {
+    parent = inspected.groups.find((group) => sameLocation(parent.parentLocation, group));
+    if (!parent) throw new Error('Selected group ancestry could not be resolved');
+    ancestors.add(`group:${parent.location.start.offset}`);
+  }
+
+  const moves = new Map();
+  const implicit = [];
+  for (const change of changes) {
+    if (!['node', 'edge', 'group'].includes(change?.type) || typeof change.inGroup !== 'boolean') {
+      throw new TypeError('A change needs a type, location and inGroup boolean');
+    }
+    const key = `${change.type}:${change.location?.start?.offset}`;
+    const item = entries.get(key);
+    if (!item || !sameLocation(change.location, item)) throw new Error('Changed element location was not found');
+    if (moves.has(key)) throw new Error('Duplicate change for an element');
+    if (change.type === 'group' && ancestors.has(key)) throw new Error('Cannot rearrange the selected group or its ancestors');
+    const currentlyInGroup = item.parentLocation != null && sameLocation(selected.location, { location: item.parentLocation });
+    if (change.inGroup === currentlyInGroup) continue;
+    if (item.implicit) implicit.push({ id: item.id, inGroup: change.inGroup });
+    else moves.set(key, change.inGroup);
+  }
+  if (!moves.size && !implicit.length) return dot;
+
+  const movedToGroup = [];
+  const movedToRoot = [];
+  function collect(container) {
+    for (const child of container.children) {
+      const type = child.type === 'Subgraph' && child.id?.value.startsWith('cluster_') ? 'group'
+        : child.type === 'Node' ? 'node' : child.type === 'Edge' ? 'edge' : null;
+      const key = `${type}:${child.location?.start.offset}`;
+      if (moves.has(key)) (moves.get(key) ? movedToGroup : movedToRoot).push(child);
+      if (child.type === 'Subgraph') collect(child);
+    }
+  }
+  collect(graph);
+  if (movedToGroup.length + movedToRoot.length !== moves.size) throw new Error('Changed statements could not be resolved');
+  const eol = dot.includes('\r\n') ? '\r\n' : '\n';
+  const at = (item) => item.location.start.offset;
+  const end = (item) => item.location.end.offset;
+  function render(container) {
+    let result = '';
+    let position = at(container);
+    for (const child of container.children) {
+      if (!child.location || at(child) < position || end(child) > end(container)) continue;
+      result += dot.slice(position, at(child));
+      const type = child.type === 'Subgraph' && child.id?.value.startsWith('cluster_') ? 'group'
+        : child.type === 'Node' ? 'node' : child.type === 'Edge' ? 'edge' : null;
+      if (!moves.has(`${type}:${at(child)}`)) {
+        result += child.type === 'Subgraph' ? render(child) : dot.slice(at(child), end(child));
+      }
+      position = end(child);
+    }
+    const tail = dot.slice(position, end(container));
+    const additions = container.type === 'Graph' ? movedToRoot
+      : container.type === 'Subgraph' && at(container) === selected.location.start.offset ? movedToGroup : [];
+    if (!additions.length) return result + tail;
+    const closing = tail.lastIndexOf('}');
+    if (closing < 0) throw new Error('Cannot locate container closing brace');
+    return result + tail.slice(0, closing) +
+      additions.map((item) => `${eol}${render(item)}`).join('') + eol + tail.slice(closing);
+  }
+  let updated = validated(dot.slice(0, at(graph)) + render(graph) + dot.slice(end(graph)));
+  for (const item of implicit) {
+    const parentGraph = read(updated);
+    const destination = item.inGroup ? parentFor(parentGraph, { parentId: selected.id }) : parentGraph;
+    updated = validated(insert(updated, destination, `${identifier(item.id, 'id')};`));
+  }
+  return updated;
+}
+
 function edgeReferences(item, id) {
   function contains(target) {
     if (target.type === 'NodeRef') return target.id.value === id;
