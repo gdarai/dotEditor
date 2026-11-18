@@ -8,7 +8,7 @@ vi.mock('../graph/dot.js', () => ({
   inspectGraph: () => ({
     directed: true,
     nodes: [
-      { id: 'a', location: { start: { offset: 1 } }, attributes: {}, parentId: 'cluster_team' },
+      { id: 'a', location: { start: { offset: 1 } }, attributes: { shape: 'box', color: 'red' }, parentId: 'cluster_team' },
       { id: 'b', implicit: true, location: { start: { offset: 2 } }, attributes: {}, parentId: 'cluster_team' },
       { id: 'cluster_team', location: { start: { offset: 3 } }, attributes: {} },
     ],
@@ -41,6 +41,42 @@ describe('EditDialog', () => {
     await userEvent.type(screen.getByLabelText('Node ID'), 'b')
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(onCommit).toHaveBeenCalledWith('digraph { a; b; }')
+  })
+
+  it('clones unset attributes from the chosen node but keeps typed values', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
+    await userEvent.type(screen.getByLabelText('Node ID'), 'c')
+    await userEvent.type(screen.getByLabelText('Clone from'), 'a')
+    await userEvent.type(screen.getByLabelText('Color value'), 'blue')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(createElement).toHaveBeenCalledWith('digraph { a; }', 'node', {
+      id: 'c', parentId: 'cluster_team', shape: 'box', color: 'blue',
+    })
+  })
+
+  it('inherits the clone source parent group when none was chosen', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
+    await userEvent.type(screen.getByLabelText('Node ID'), 'c')
+    await userEvent.type(screen.getByLabelText('Clone from'), 'a')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(createElement).toHaveBeenCalledWith('digraph { a; }', 'node', expect.objectContaining({ parentId: 'cluster_team' }))
+  })
+
+  it('keeps an explicitly chosen parent group over the clone source', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
+    await userEvent.type(screen.getByLabelText('Node ID'), 'c')
+    await userEvent.type(screen.getByLabelText('Clone from'), 'a')
+    const parentField = screen.getByLabelText('Parent group')
+    await userEvent.clear(parentField)
+    await userEvent.type(parentField, 'other')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(createElement).toHaveBeenCalledWith('digraph { a; }', 'node', expect.objectContaining({ parentId: 'other' }))
+  })
+
+  it('does not include Clone from when editing an existing node', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit node' }))
+    await userEvent.click(screen.getByRole('button', { name: 'a' }))
+    expect(screen.queryByLabelText('Clone from')).not.toBeInTheDocument()
   })
 
   it('places Apply and Back together in the footer for a new node', async () => {

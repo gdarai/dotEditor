@@ -83,9 +83,17 @@ export default function EditDialog({ dot, onCommit, onClose }) {
   function commit(event) {
     event.preventDefault()
     try {
+      const { cloneFrom, ...data } = fields
+      if (!editing && type === 'node' && cloneFrom) {
+        const source = graph.nodes.find(node => node.id === cloneFrom)
+        for (const key of ['label', 'shape', 'color', 'fillcolor', 'style']) {
+          if (!data[key] && source?.attributes[key]) data[key] = source.attributes[key]
+        }
+        if (!data.parentId && source?.parentId) data.parentId = source.parentId
+      }
       const next = editing
-        ? updateElement(dot, type, selected.location, fields)
-        : createElement(dot, type, fields)
+        ? updateElement(dot, type, selected.location, data)
+        : createElement(dot, type, data)
       onCommit(next)
       setError('')
       setPage('home')
@@ -167,12 +175,13 @@ export default function EditDialog({ dot, onCommit, onClose }) {
         <form id="edit-element-form" onSubmit={commit}>
           <div className="fields">
             {type !== 'edge' && <TextField label={type === 'group' ? 'Cluster ID' : 'Node ID'} required value={fields.id || ''} onChange={value => change('id', value)} />}
-            <InputID label="Parent group" value={fields.parentId || ''} options={graph.groups.map(group => group.id)} onChange={value => change('parentId', value)} />
+            {!editing && type === 'node' && <InputID label="Clone from" value={fields.cloneFrom || ''} options={graph.nodes.map(node => node.id)} onChange={value => change('cloneFrom', value)} />}
             {type === 'edge' && <>
               <InputID label="Source" required value={fields.source || ''} options={ids} onChange={value => change('source', value)} />
               <InputID label="Target" required value={fields.target || ''} options={ids} onChange={value => change('target', value)} />
             </>}
             <TextField label="Label" value={fields.label || ''} onChange={value => change('label', value)} />
+            <InputID label="Parent group" value={fields.parentId || ''} options={graph.groups.map(group => group.id)} onChange={value => change('parentId', value)} />
             {type === 'node' && <SelectField label="Shape" value={fields.shape || ''} choices={['box', 'ellipse', 'circle', 'diamond', 'plaintext']} onChange={value => change('shape', value)} />}
             <SelectField label="Style" value={fields.style || ''} choices={['solid', 'dashed', 'dotted', 'bold', 'filled', 'rounded']} onChange={value => change('style', value)} />
             <ColorPicker label="Color" value={fields.color || ''} onChange={value => change('color', value)} />
