@@ -79,6 +79,15 @@ describe('EditDialog', () => {
     expect(screen.queryByLabelText('Clone from')).not.toBeInTheDocument()
   })
 
+  it('keeps the New node column layout in Edit node via a filler in place of Clone from', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit node' }))
+    await userEvent.click(screen.getByRole('button', { name: 'a' }))
+    const fields = document.querySelector('.fields').children
+    const labels = [...fields].map(field => field.querySelector('span, label')?.textContent ?? field.textContent)
+    expect(labels).toEqual(['Node ID', '', 'Label', 'Parent group', 'Shape', 'Style', 'Color', 'Fill color'])
+    expect(fields[1]).toHaveClass('field-empty')
+  })
+
   it('places Apply and Back together in the footer for a new node', async () => {
     await userEvent.click(screen.getByRole('button', { name: '(+) Node' }))
     const actions = within(screen.getByRole('group', { name: 'Dialog actions' }))

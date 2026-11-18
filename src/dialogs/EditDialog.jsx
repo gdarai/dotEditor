@@ -18,6 +18,10 @@ function TextField({ label, value, onChange, required = false }) {
   return <label className="field">{label}<input required={required} value={value} onChange={event => onChange(event.target.value)} /></label>
 }
 
+function Empty() {
+  return <div className="field field-empty" aria-hidden="true" />
+}
+
 function SelectField({ label, value, choices, onChange }) {
   const options = value && !choices.includes(value) ? [value, ...choices] : choices
   return <OptionsSelectBox label={label} value={value} options={options} onChange={onChange} />
@@ -176,6 +180,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
           <div className="fields">
             {type !== 'edge' && <TextField label={type === 'group' ? 'Cluster ID' : 'Node ID'} required value={fields.id || ''} onChange={value => change('id', value)} />}
             {!editing && type === 'node' && <InputID label="Clone from" value={fields.cloneFrom || ''} options={graph.nodes.map(node => node.id)} onChange={value => change('cloneFrom', value)} />}
+            {editing && type === 'node' && <Empty />}
             {type === 'edge' && <>
               <InputID label="Source" required value={fields.source || ''} options={ids} onChange={value => change('source', value)} />
               <InputID label="Target" required value={fields.target || ''} options={ids} onChange={value => change('target', value)} />
