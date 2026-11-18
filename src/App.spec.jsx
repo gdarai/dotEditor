@@ -24,6 +24,16 @@ describe('App', () => {
     expect(screen.getByRole('navigation', { name: 'Graph navigation' })).toBeInTheDocument()
   })
 
+  it('opens Config and Edit panels via keyboard shortcuts', async () => {
+    localStorage.setItem('dotEditor:graph', 'digraph {}')
+    render(<App />)
+    await userEvent.keyboard('e')
+    expect(screen.getByRole('dialog', { name: 'Edit' })).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    await userEvent.keyboard('c')
+    expect(screen.getByRole('dialog', { name: 'Config' })).toBeInTheDocument()
+  })
+
   it('creates and persists a graph on first visit', async () => {
     render(<App />)
     await userEvent.click(screen.getByRole('button', { name: 'New graph' }))

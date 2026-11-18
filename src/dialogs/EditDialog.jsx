@@ -5,13 +5,14 @@ import InputID from '../components/InputID.jsx'
 import OptionsSelectBox from '../components/OptionsSelectBox.jsx'
 import useEscapeKey from '../components/useEscapeKey.js'
 import useAutoFocus from '../components/useAutoFocus.js'
+import useShortcuts from '../components/useShortcuts.js'
 
 const TYPES = { node: 'node', group: 'group', edge: 'arrow' }
 const ACTIONS = [
-  ['new-node', '(+) Node'], ['edit-node', 'Edit node'],
-  ['new-edge', '(+) Arrow'], ['edit-edge', 'Edit arrow'],
-  ['new-group', '(+) Group'], ['edit-group', 'Edit group'],
-  ['raw', 'Raw DOT'],
+  ['new-node', '(+) Node', 'N'], ['edit-node', 'Edit node', 'Alt+N'],
+  ['new-edge', '(+) Arrow', 'A'], ['edit-edge', 'Edit arrow', 'Alt+A'],
+  ['new-group', '(+) Group', 'G'], ['edit-group', 'Edit group', 'Alt+G'],
+  ['raw', 'Raw DOT', 'R'],
 ]
 
 function TextField({ label, value, onChange, required = false }) {
@@ -90,6 +91,16 @@ export default function EditDialog({ dot, onCommit, onClose }) {
 
   useEscapeKey(page === 'home' ? onClose : back)
 
+  useShortcuts([
+    { key: 'n', handler: () => chooseAction('new-node') },
+    { key: 'n', alt: true, handler: () => chooseAction('edit-node') },
+    { key: 'a', handler: () => chooseAction('new-edge') },
+    { key: 'a', alt: true, handler: () => chooseAction('edit-edge') },
+    { key: 'g', handler: () => chooseAction('new-group') },
+    { key: 'g', alt: true, handler: () => chooseAction('edit-group') },
+    { key: 'r', handler: () => chooseAction('raw') },
+  ], page === 'home')
+
   function commit(event) {
     event.preventDefault()
     try {
@@ -159,7 +170,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
       <h2>{page === 'home' ? 'Edit' : page === 'confirm' ? `Delete ${TYPES[type]}?` : heading}</h2>
       {page === 'home' && (
         <div className="action-grid">
-          {ACTIONS.map(([key, label]) => <button key={key} type="button" onClick={() => chooseAction(key)}>{label}</button>)}
+          {ACTIONS.map(([key, label, shortcut]) => <button key={key} type="button" title={`Shortcut: ${shortcut}`} onClick={() => chooseAction(key)}>{label}</button>)}
         </div>
       )}
       {page === 'select' && (

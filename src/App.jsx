@@ -7,6 +7,7 @@ import NavigationDialog from './dialogs/NavigationDialog.jsx'
 import { clampPan, moveViewport } from './dialogs/NavigationDialog.utils.js'
 import { inspectGraph } from './graph/dot.js'
 import { appendColors, readSetting, writeSetting } from './storage.js'
+import useShortcuts from './components/useShortcuts.js'
 
 function rememberGraphColors(graph) {
   const colors = [...graph.nodes, ...graph.groups, ...graph.edges]
@@ -107,14 +108,19 @@ export default function App() {
     })
   }
 
+  useShortcuts([
+    { key: 'c', handler: () => setPanel('config') },
+    { key: 'e', handler: () => { if (dot) setPanel('edit') } },
+  ], !panel)
+
   if (panel === 'export') return <ExportPage dot={dot} onBack={() => setPanel('config')} />
 
   return (
     <div className={`app layout-${layout}`}>
       <GraphViewer dot={dot || 'digraph {}'} viewport={viewport} onDimensions={setDimensions} />
       <header className="toolbar">
-        <button type="button" onClick={() => setPanel('config')}>Config</button>
-        <button type="button" disabled={!dot} onClick={() => setPanel('edit')}>Edit</button>
+        <button type="button" title="Shortcut: C" onClick={() => setPanel('config')}>Config</button>
+        <button type="button" title="Shortcut: E" disabled={!dot} onClick={() => setPanel('edit')}>Edit</button>
       </header>
       {error && <div role="alert" className="app-error">{error}</div>}
       {panel === 'config' && <ConfigDialog
