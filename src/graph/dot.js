@@ -421,6 +421,13 @@ function groupBodyStart(dot, item) {
   throw new Error('Cannot locate group body');
 }
 
+function keepEdgeNodes(edge, before, remainingIds) {
+  if (!edge.targets.every(reference)) return undefined;
+  const ids = [...new Set(edge.targets.map((target) => target.id.value))];
+  const missing = ids.filter((id) => before.has(id) && !remainingIds.has(id));
+  return missing.length ? missing.map((id) => `${id};`).join(' ') : undefined;
+}
+
 function keepGroupChildren(dot, group) {
   const start = groupBodyStart(dot, group);
   const end = group.location.end.offset - 1;
@@ -474,14 +481,18 @@ export function planDeletion(dot, type, location) {
     arrows: before.edges.length - after.edges.length,
     groups: before.groups.length - after.groups.length,
   };
+  const beforeIds = new Set(before.nodes.map((node) => node.id));
+  const keptValue = type === 'group'
+    ? keepGroupChildren(dot, candidates[0])
+    : type === 'edge' ? keepEdgeNodes(candidates[0], beforeIds, remainingIds) : undefined;
   return {
     counts,
     deleted: next,
-    ...(type === 'group' && {
+    ...(keptValue != null && {
       kept: patch(dot, [{
         start: candidates[0].location.start.offset,
         end: candidates[0].location.end.offset,
-        value: keepGroupChildren(dot, candidates[0]),
+        value: keptValue,
       }]),
     }),
   };

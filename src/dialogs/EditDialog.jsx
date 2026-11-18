@@ -107,8 +107,8 @@ export default function EditDialog({ dot, onCommit, onClose }) {
 
   function requestDeletion(element) {
     try {
-      const { counts } = planDeletion(dot, type, element.location)
-      setPendingDeletion({ element, counts })
+      const { counts, kept } = planDeletion(dot, type, element.location)
+      setPendingDeletion({ element, counts, hasKept: kept !== undefined })
       setError('')
       setPage('confirm')
     } catch (cause) {
@@ -157,7 +157,8 @@ export default function EditDialog({ dot, onCommit, onClose }) {
       )}
       {page === 'confirm' && <>
         <p>Will delete {count.nodes} nodes, {count.arrows} arrows and {count.groups} groups.</p>
-        {type === 'group' && <p>Keep Elements removes the group but moves its contained elements into the parent graph.</p>}
+        {type === 'group' && pendingDeletion.hasKept && <p>Keep Elements removes the group but moves its contained elements into the parent graph.</p>}
+        {type === 'edge' && pendingDeletion.hasKept && <p>Keep Elements removes the arrow but keeps its endpoint nodes in the graph.</p>}
       </>}
       {page === 'form' && selected?.complex && (
         <p>Complex edges cannot be edited safely here. Use the Raw DOT card instead.</p>
@@ -189,7 +190,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
       <div className="card-footer" role="group" aria-label="Dialog actions">
         {page === 'confirm' && <>
           <button ref={backRef} type="button" onClick={back}>Back</button>
-          {type === 'group' && <button type="button" onClick={() => confirmDeletion(true)}>Keep Elements</button>}
+          {pendingDeletion.hasKept && <button type="button" onClick={() => confirmDeletion(true)}>Keep Elements</button>}
           <button className="button-delete" type="button" onClick={() => confirmDeletion()}>{type === 'group' ? 'Delete Elements' : 'Delete'}</button>
         </>}
         {page === 'form' && !selected?.complex && <button className="button-apply" type="submit" form="edit-element-form">Apply</button>}
