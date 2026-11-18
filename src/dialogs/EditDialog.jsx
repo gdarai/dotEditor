@@ -27,6 +27,12 @@ function SelectField({ label, value, choices, onChange }) {
   return <OptionsSelectBox label={label} value={value} options={options} onChange={onChange} />
 }
 
+function edgeLabel(item, directed) {
+  return `${item.source} ${directed ? '→' : '—'} ${item.target}`
+}
+
+const CLONE_ATTRIBUTES = { node: ['label', 'shape', 'color', 'fillcolor', 'style'], edge: ['label', 'color', 'style', 'arrowhead'], group: ['label', 'color', 'style', 'bgcolor'] }
+
 export default function EditDialog({ dot, onCommit, onClose }) {
   const [page, setPage] = useState('home')
   const [action, setAction] = useState('')
@@ -88,9 +94,13 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     event.preventDefault()
     try {
       const { cloneFrom, ...data } = fields
-      if (!editing && type === 'node' && cloneFrom) {
-        const source = graph.nodes.find(node => node.id === cloneFrom)
-        for (const key of ['label', 'shape', 'color', 'fillcolor', 'style']) {
+      if (!editing && cloneFrom && CLONE_ATTRIBUTES[type]) {
+        const source = type === 'edge'
+          ? graph.edges.find(edge => edgeLabel(edge, graph.directed) === cloneFrom)
+          : type === 'group'
+            ? graph.groups.find(group => group.id === cloneFrom)
+            : graph.nodes.find(node => node.id === cloneFrom)
+        for (const key of CLONE_ATTRIBUTES[type]) {
           if (!data[key] && source?.attributes[key]) data[key] = source.attributes[key]
         }
         if (!data.parentId && source?.parentId) data.parentId = source.parentId
@@ -178,21 +188,40 @@ export default function EditDialog({ dot, onCommit, onClose }) {
       {page === 'form' && !selected?.complex && (
         <form id="edit-element-form" onSubmit={commit}>
           <div className="fields">
-            {type !== 'edge' && <TextField label={type === 'group' ? 'Cluster ID' : 'Node ID'} required value={fields.id || ''} onChange={value => change('id', value)} />}
-            {!editing && type === 'node' && <InputID label="Clone from" value={fields.cloneFrom || ''} options={graph.nodes.map(node => node.id)} onChange={value => change('cloneFrom', value)} />}
-            {editing && type === 'node' && <Empty />}
-            {type === 'edge' && <>
+            {type === 'edge' ? <>
+              <InputID label="Parent group" value={fields.parentId || ''} options={graph.groups.map(group => group.id)} onChange={value => change('parentId', value)} />
+              {!editing
+                ? <InputID label="Clone from" value={fields.cloneFrom || ''} options={graph.edges.map(edge => edgeLabel(edge, graph.directed))} onChange={value => change('cloneFrom', value)} />
+                : <Empty />}
               <InputID label="Source" required value={fields.source || ''} options={ids} onChange={value => change('source', value)} />
               <InputID label="Target" required value={fields.target || ''} options={ids} onChange={value => change('target', value)} />
+              <SelectField label="Style" value={fields.style || ''} choices={['solid', 'dashed', 'dotted', 'bold', 'filled', 'rounded']} onChange={value => change('style', value)} />
+              {graph.directed && <SelectField label="Arrowhead" value={fields.arrowhead || ''} choices={['normal', 'none', 'vee', 'dot', 'diamond']} onChange={value => change('arrowhead', value)} />}
+              <ColorPicker label="Color" value={fields.color || ''} onChange={value => change('color', value)} />
+              <TextField label="Label" value={fields.label || ''} onChange={value => change('label', value)} />
+            </> : type === 'group' ? <>
+              <TextField label="Cluster ID" required value={fields.id || ''} onChange={value => change('id', value)} />
+              {!editing
+                ? <InputID label="Clone from" value={fields.cloneFrom || ''} options={graph.groups.map(group => group.id)} onChange={value => change('cloneFrom', value)} />
+                : <Empty />}
+              <TextField label="Label" value={fields.label || ''} onChange={value => change('label', value)} />
+              <InputID label="Parent group" value={fields.parentId || ''} options={graph.groups.map(group => group.id)} onChange={value => change('parentId', value)} />
+              <SelectField label="Style" value={fields.style || ''} choices={['solid', 'dashed', 'dotted', 'bold', 'filled', 'rounded']} onChange={value => change('style', value)} />
+              <Empty />
+              <ColorPicker label="Color" value={fields.color || ''} onChange={value => change('color', value)} />
+              <ColorPicker label="Background color" value={fields.bgcolor || ''} onChange={value => change('bgcolor', value)} />
+            </> : <>
+              <TextField label="Node ID" required value={fields.id || ''} onChange={value => change('id', value)} />
+              {!editing
+                ? <InputID label="Clone from" value={fields.cloneFrom || ''} options={graph.nodes.map(node => node.id)} onChange={value => change('cloneFrom', value)} />
+                : <Empty />}
+              <TextField label="Label" value={fields.label || ''} onChange={value => change('label', value)} />
+              <InputID label="Parent group" value={fields.parentId || ''} options={graph.groups.map(group => group.id)} onChange={value => change('parentId', value)} />
+              <SelectField label="Shape" value={fields.shape || ''} choices={['box', 'ellipse', 'circle', 'diamond', 'plaintext']} onChange={value => change('shape', value)} />
+              <SelectField label="Style" value={fields.style || ''} choices={['solid', 'dashed', 'dotted', 'bold', 'filled', 'rounded']} onChange={value => change('style', value)} />
+              <ColorPicker label="Color" value={fields.color || ''} onChange={value => change('color', value)} />
+              <ColorPicker label="Fill color" value={fields.fillcolor || ''} onChange={value => change('fillcolor', value)} />
             </>}
-            <TextField label="Label" value={fields.label || ''} onChange={value => change('label', value)} />
-            <InputID label="Parent group" value={fields.parentId || ''} options={graph.groups.map(group => group.id)} onChange={value => change('parentId', value)} />
-            {type === 'node' && <SelectField label="Shape" value={fields.shape || ''} choices={['box', 'ellipse', 'circle', 'diamond', 'plaintext']} onChange={value => change('shape', value)} />}
-            <SelectField label="Style" value={fields.style || ''} choices={['solid', 'dashed', 'dotted', 'bold', 'filled', 'rounded']} onChange={value => change('style', value)} />
-            <ColorPicker label="Color" value={fields.color || ''} onChange={value => change('color', value)} />
-            {type === 'node' && <ColorPicker label="Fill color" value={fields.fillcolor || ''} onChange={value => change('fillcolor', value)} />}
-            {type === 'group' && <ColorPicker label="Background color" value={fields.bgcolor || ''} onChange={value => change('bgcolor', value)} />}
-            {type === 'edge' && graph.directed && <SelectField label="Arrowhead" value={fields.arrowhead || ''} choices={['normal', 'none', 'vee', 'dot', 'diamond']} onChange={value => change('arrowhead', value)} />}
           </div>
           <button type="submit" hidden aria-hidden="true" tabIndex={-1} />
         </form>

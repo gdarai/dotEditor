@@ -13,9 +13,9 @@ vi.mock('../graph/dot.js', () => ({
       { id: 'cluster_team', location: { start: { offset: 3 } }, attributes: {} },
     ],
     groups: [
-      { id: 'cluster_team', location: { start: { offset: 4 } }, attributes: {} },
+      { id: 'cluster_team', location: { start: { offset: 4 } }, attributes: { color: 'purple', style: 'filled' } },
     ],
-    edges: [{ source: 'a', target: 'b', location: { start: { offset: 5 } }, attributes: {} }],
+    edges: [{ source: 'a', target: 'b', location: { start: { offset: 5 } }, attributes: { color: 'green', style: 'dashed' } }],
   }),
   createElement: vi.fn(() => 'digraph { a; b; }'),
   updateElement: vi.fn(() => 'digraph { a [label="A"]; }'),
@@ -186,6 +186,66 @@ describe('EditDialog', () => {
     await userEvent.type(screen.getByRole('combobox', { name: 'Target' }), 'new_id')
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     expect(onCommit).toHaveBeenCalledWith('digraph { a; b; }')
+  })
+
+  it('offers a Clone from field listing other arrows and clones unset attributes', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Arrow' }))
+    const cloneFrom = screen.getByRole('combobox', { name: 'Clone from' })
+    expect(within(document.getElementById(cloneFrom.getAttribute('list'))).getAllByRole('option', { hidden: true }).map(option => option.value)).toEqual(['a → b'])
+    await userEvent.type(screen.getByRole('combobox', { name: 'Source' }), 'b')
+    await userEvent.type(screen.getByRole('combobox', { name: 'Target' }), 'cluster_team')
+    await userEvent.type(cloneFrom, 'a → b')
+    await userEvent.type(screen.getByLabelText('Color value'), 'blue')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(createElement).toHaveBeenCalledWith('digraph { a; }', 'edge', {
+      source: 'b', target: 'cluster_team', parentId: '', color: 'blue', style: 'dashed',
+    })
+  })
+
+  it('orders new-arrow fields as Parent group/Source/Style/Color and Clone from/Target/Arrowhead/Label, with a filler replacing Clone from when editing', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Arrow' }))
+    let fields = [...document.querySelector('.fields').children]
+    let labels = fields.map(field => field.querySelector('span, label')?.textContent ?? field.textContent)
+    expect(labels).toEqual(['Parent group', 'Clone from', 'Source', 'Target', 'Style', 'Arrowhead', 'Color', 'Label'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit arrow' }))
+    await userEvent.click(screen.getByRole('button', { name: 'a → b' }))
+    fields = [...document.querySelector('.fields').children]
+    labels = fields.map(field => field.querySelector('span, label')?.textContent ?? field.textContent)
+    expect(labels).toEqual(['Parent group', '', 'Source', 'Target', 'Style', 'Arrowhead', 'Color', 'Label'])
+    expect(fields[1]).toHaveClass('field-empty')
+  })
+
+  it('offers a Clone from field listing other groups and clones unset attributes for a new group', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Group' }))
+    const cloneFrom = screen.getByRole('combobox', { name: 'Clone from' })
+    expect(within(document.getElementById(cloneFrom.getAttribute('list'))).getAllByRole('option', { hidden: true }).map(option => option.value)).toEqual(['cluster_team'])
+    await userEvent.clear(screen.getByLabelText('Cluster ID'))
+    await userEvent.type(screen.getByLabelText('Cluster ID'), 'cluster_new')
+    await userEvent.type(cloneFrom, 'cluster_team')
+    await userEvent.type(screen.getByLabelText('Background color value'), 'blue')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(createElement).toHaveBeenCalledWith('digraph { a; }', 'group', {
+      id: 'cluster_new', parentId: '', color: 'purple', style: 'filled', bgcolor: 'blue',
+    })
+  })
+
+  it('orders new-group fields as Cluster ID/Label/Style/Color and Clone from/Parent group/Empty/Background color, with a filler replacing Clone from when editing', async () => {
+    await userEvent.click(screen.getByRole('button', { name: '(+) Group' }))
+    let fields = [...document.querySelector('.fields').children]
+    let labels = fields.map(field => field.querySelector('span, label')?.textContent ?? field.textContent)
+    expect(labels).toEqual(['Cluster ID', 'Clone from', 'Label', 'Parent group', 'Style', '', 'Color', 'Background color'])
+    expect(fields[5]).toHaveClass('field-empty')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit group' }))
+    await userEvent.click(screen.getByRole('button', { name: 'cluster_team' }))
+    fields = [...document.querySelector('.fields').children]
+    labels = fields.map(field => field.querySelector('span, label')?.textContent ?? field.textContent)
+    expect(labels).toEqual(['Cluster ID', '', 'Label', 'Parent group', 'Style', '', 'Color', 'Background color'])
+    expect(fields[1]).toHaveClass('field-empty')
+    expect(fields[5]).toHaveClass('field-empty')
   })
 
   it('does not submit an arrow without both endpoints', async () => {
