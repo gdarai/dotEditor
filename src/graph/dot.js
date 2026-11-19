@@ -5,6 +5,8 @@ const ATTRIBUTES = {
   group: ['label', 'color', 'fillcolor', 'style', 'bgcolor'],
   edge: ['label', 'color', 'style', 'arrowhead'],
 };
+const GRAPH_OPTIONS = ['rankdir', 'rank', 'fontname', 'fontcolor'];
+const ROOT_OPTIONS = [...GRAPH_OPTIONS, 'splines', 'compound'];
 
 function read(dot) {
   if (typeof dot !== 'string') throw new TypeError('DOT source must be a string');
@@ -109,6 +111,7 @@ export function inspectGraph(dot) {
         for (const ref of refs) {
           if (!referenced.has(ref.id.value)) referenced.set(ref.id.value, { location: ref.location, ...placement });
         }
+
       }
     }
   });
@@ -116,6 +119,97 @@ export function inspectGraph(dot) {
     if (!explicit.has(id)) nodes.push({ id, ...reference, attributes: {}, implicit: true });
   }
   return { directed: graph.directed, nodes, groups, edges };
+}
+
+function optionContainer(graph, groupLocation) {
+  if (groupLocation == null) return graph;
+  const groups = [];
+  walk(graph, (item) => {
+    if (item.type === 'Subgraph' && item.id?.value.startsWith('cluster_') && sameLocation(groupLocation, item)) groups.push(item);
+  });
+  if (groups.length !== 1) throw new Error('Selected group location was not found or is ambiguous');
+  return groups[0];
+}
+
+function graphOptionAttributes(container) {
+  return container.children.flatMap((child) => child.type === 'AttributeList' && child.kind === 'Graph'
+    ? child.children.filter((attr) => attr.type === 'Attribute').map((attr) => ({ attr, list: child }))
+    : child.type === 'Attribute' ? [{ attr: child }] : []);
+}
+
+export function readGraphOptions(dot, groupLocation = null) {
+  const container = optionContainer(read(dot), groupLocation);
+  const allowed = groupLocation == null ? ROOT_OPTIONS : GRAPH_OPTIONS;
+  const options = {};
+  for (const { attr } of graphOptionAttributes(container)) {
+    const key = attr.key.value.toLowerCase();
+    if (allowed.includes(key)) options[key] = attr.value.value;
+  }
+  return options;
+}
+
+export function updateGraphOptions(dot, groupLocation, data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new TypeError('Graph options must be an object');
+  const graph = read(dot);
+  const container = optionContainer(graph, groupLocation);
+  const allowed = groupLocation == null ? ROOT_OPTIONS : GRAPH_OPTIONS;
+  for (const [key, value] of Object.entries(data)) {
+    if (!allowed.includes(key)) throw new Error(`Unsupported graph option: ${key}`);
+    text(value, key);
+  }
+  const existing = graphOptionAttributes(container);
+  const changes = [];
+  const additions = [];
+  for (const [key, value] of Object.entries(data)) {
+    const matches = existing.filter(({ attr }) => attr.key.value.toLowerCase() === key);
+    if (value === '') {
+      for (const { attr, list } of matches) {
+        let start = attr.location.start.offset;
+        if (list && !/[,;]\s*$/.test(dot.slice(start, attr.location.end.offset))) {
+          const previous = list.children.filter((child) => child.type === 'Attribute' && child.location.end.offset <= start).at(-1);
+          const between = dot.slice(previous?.location.end.offset ?? start, start);
+          if (previous && !changes.some((change) => change.end === previous.location.end.offset && change.value === '') &&
+              /[,;]$/.test(dot.slice(previous.location.start.offset, previous.location.end.offset)) && /^\s*$/.test(between)) {
+            start = previous.location.end.offset - 1;
+          } else if (previous && /^\s*[,;]\s*$/.test(between)) start -= between.length;
+        }
+        changes.push({ start, end: attr.location.end.offset, value: '' });
+      }
+    } else if (matches.length) {
+      const { attr } = matches.at(-1);
+      changes.push({ start: attr.value.location.start.offset, end: attr.value.location.end.offset, value: quote(value) });
+    } else {
+      additions.push(`${key}=${quote(value)}`);
+    }
+  }
+  if (additions.length) {
+    const lists = container.children.filter((child) => child.type === 'AttributeList' && child.kind === 'Graph');
+    const list = lists.at(-1);
+    if (list) {
+      const bracket = attributeBracket(dot, list, list.location.start.offset);
+      if (!bracket) throw new Error('Cannot locate graph attribute list');
+      if (list.children.some((child) => child.type === 'Comment' && child.kind !== 'Block')) {
+        throw new Error('Cannot safely append attributes after a line comment');
+      }
+      const remaining = remainingList(dot, bracket, changes);
+      const separator = remaining.trim() && !/[,;]\s*$/.test(remaining) ? ', ' : '';
+      changes.push({ start: bracket.close, end: bracket.close, value: `${separator}${additions.join(', ')}` });
+    } else {
+      const updated = patch(dot, changes);
+      let fresh = read(updated);
+      if (groupLocation != null) {
+        const groups = [];
+        walk(fresh, (item) => {
+          if (item.type === 'Subgraph' && item.id?.value.startsWith('cluster_') &&
+              item.location.start.offset === container.location.start.offset) groups.push(item);
+        });
+        if (groups.length !== 1) throw new Error('Updated group location was not found or is ambiguous');
+        fresh = groups[0];
+      }
+      return validated(insert(updated, fresh, `graph [${additions.join(', ')}];`));
+    }
+  }
+  return patch(dot, changes);
 }
 
 function ensureData(type, data) {

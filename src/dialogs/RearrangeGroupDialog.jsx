@@ -3,8 +3,8 @@ import { inspectGraph, rearrangeGroup } from '../graph/dot.js'
 import useAutoFocus from '../components/useAutoFocus.js'
 import useEscapeKey from '../components/useEscapeKey.js'
 
-export default function RearrangeGroupDialog({ dot, onCommit, onBack }) {
-  const [selected, setSelected] = useState(null)
+export default function RearrangeGroupDialog({ dot, group = null, onCommit, onBack }) {
+  const [selected, setSelected] = useState(group)
   const [filter, setFilter] = useState('')
   const [pending, setPending] = useState({})
   const [error, setError] = useState('')
@@ -37,7 +37,7 @@ export default function RearrangeGroupDialog({ dot, onCommit, onBack }) {
   const visible = entries.filter(entry => entry.label.toLowerCase().includes(filter.toLowerCase()))
 
   function back() {
-    if (!selected) onBack()
+    if (group || !selected) onBack()
     else {
       setSelected(null)
       setPending({})

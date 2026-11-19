@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { loadGraph } from './api.js'
 import { readColors, rememberColor } from './storage.js'
+import { inspectGraph, readGraphOptions } from './graph/dot.js'
 import App from './App.jsx'
 
 vi.mock('./components/GraphViewer.jsx', () => ({ default: () => <div>Graph viewer</div> }))
@@ -73,6 +74,25 @@ describe('App', () => {
     expect(localStorage.getItem('dotEditor:graph')).toContain('b -> c;')
     expect(localStorage.getItem('dotEditor:graph')).not.toContain('a -> b;')
     expect(screen.queryByRole('button', { name: 'Del node a' })).not.toBeInTheDocument()
+  })
+
+  it('persists Top Config and selected-cluster Cfg independently', async () => {
+    localStorage.setItem('dotEditor:graph', 'digraph G { graph [custom=keep]; subgraph cluster_x { a; } }')
+    render(<App />)
+    await userEvent.keyboard('e')
+    await userEvent.keyboard('t')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Rank direction' }), 'LR')
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Compound' }), 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit group' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cfg cluster_x' }))
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Rank' }), 'same')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    const updated = localStorage.getItem('dotEditor:graph')
+    expect(updated).toContain('custom=keep')
+    expect(readGraphOptions(updated)).toEqual({ rankdir: 'LR', compound: 'true' })
+    expect(readGraphOptions(updated, inspectGraph(updated).groups[0].location)).toEqual({ rank: 'same' })
+    expect(screen.getByRole('heading', { name: 'Edit group' })).toBeInTheDocument()
   })
 
   it('prefills color memory after loading a remote graph', async () => {

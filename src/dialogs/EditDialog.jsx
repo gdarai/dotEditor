@@ -7,13 +7,14 @@ import useEscapeKey from '../components/useEscapeKey.js'
 import useAutoFocus from '../components/useAutoFocus.js'
 import useShortcuts from '../components/useShortcuts.js'
 import RearrangeGroupDialog from './RearrangeGroupDialog.jsx'
+import GraphOptionsDialog from './GraphOptionsDialog.jsx'
 
 const TYPES = { node: 'node', group: 'group', edge: 'arrow' }
 const ACTIONS = [
   ['new-node', '(+) Node', 'N'], ['edit-node', 'Edit node', 'Alt+N'],
   ['new-edge', '(+) Arrow', 'A'], ['edit-edge', 'Edit arrow', 'Alt+A'],
   ['new-group', '(+) Group', 'G'], ['edit-group', 'Edit group', 'Alt+G'],
-  ['rearrange', 'Rearrange Group', ''],
+  ['top-config', 'Top Config', 'T'],
   ['raw', 'Raw DOT', 'R'],
 ]
 
@@ -62,7 +63,13 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     setFields({ parentId: '', ...(next === 'new-group' && { id: 'cluster_' }) })
     setError('')
     if (next === 'raw') setRaw(dot)
-    setPage(next === 'rearrange' ? 'rearrange' : next === 'raw' ? 'raw' : next.startsWith('edit-') ? 'select' : 'form')
+    setPage(next === 'top-config' ? 'graph-options' : next === 'raw' ? 'raw' : next.startsWith('edit-') ? 'select' : 'form')
+  }
+
+  function chooseGroupAction(group, nextPage) {
+    setSelected(group)
+    setError('')
+    setPage(nextPage)
   }
 
   function chooseElement(element) {
@@ -86,12 +93,12 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     if (page === 'confirm') {
       setPendingDeletion(null)
       setPage('select')
-    } else if (page === 'form' && editing) setPage('select')
+    } else if ((page === 'form' && editing) || ((page === 'rearrange' || page === 'graph-options') && selected)) setPage('select')
     else setPage('home')
     setError('')
   }
 
-  useEscapeKey(page === 'home' ? onClose : back, page !== 'rearrange')
+  useEscapeKey(page === 'home' ? onClose : back, page !== 'rearrange' && page !== 'graph-options')
 
   useShortcuts([
     { key: 'n', handler: () => chooseAction('new-node') },
@@ -100,6 +107,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
     { key: 'a', alt: true, handler: () => chooseAction('edit-edge') },
     { key: 'g', handler: () => chooseAction('new-group') },
     { key: 'g', alt: true, handler: () => chooseAction('edit-group') },
+    { key: 't', handler: () => chooseAction('top-config') },
     { key: 'r', handler: () => chooseAction('raw') },
   ], page === 'home')
 
@@ -167,7 +175,8 @@ export default function EditDialog({ dot, onCommit, onClose }) {
   const heading = ACTIONS.find(([key]) => key === action)?.[1]
   const count = pendingDeletion?.counts
 
-  if (page === 'rearrange') return <RearrangeGroupDialog dot={dot} onCommit={onCommit} onBack={() => setPage('home')} />
+  if (page === 'rearrange') return <RearrangeGroupDialog dot={dot} group={selected} onCommit={onCommit} onBack={back} />
+  if (page === 'graph-options') return <GraphOptionsDialog dot={dot} group={selected} onCommit={onCommit} onBack={back} />
 
   return (
     <section className="dialog edit-dialog" role="dialog" aria-modal="true" aria-label="Edit" ref={dialogRef}>
@@ -187,6 +196,10 @@ export default function EditDialog({ dot, onCommit, onClose }) {
                 {item.implicit ? ' (implicit)' : ''}
                 {item.complex ? ' (raw DOT only)' : ''}
               </button>
+              {type === 'group' && <>
+                <button type="button" aria-label={`Items ${item.id}`} onClick={() => chooseGroupAction(item, 'rearrange')}>Items</button>
+                <button type="button" aria-label={`Cfg ${item.id}`} onClick={() => chooseGroupAction(item, 'graph-options')}>Cfg</button>
+              </>}
               <button className="button-delete" type="button" title="Del" aria-label={`Del ${TYPES[type]} ${type === 'edge' ? `${item.source} ${graph.directed ? '→' : '—'} ${item.target}` : item.id}`} onClick={() => requestDeletion(item)}>Del</button>
             </div>
           ))}

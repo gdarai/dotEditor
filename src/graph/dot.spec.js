@@ -1,5 +1,58 @@
 import { describe, expect, it } from 'vitest';
-import { createElement, inspectGraph, planDeletion, rearrangeGroup, updateElement } from './dot.js';
+import { createElement, inspectGraph, planDeletion, readGraphOptions, rearrangeGroup, updateElement, updateGraphOptions } from './dot.js';
+
+describe('graph options', () => {
+  it('reads and edits root and nested cluster options without touching unrelated settings', () => {
+    const dot = `digraph G {
+      // preserve
+      rankdir=TB;
+      graph [fontname=Arial, splines=ortho, custom=keep];
+      subgraph cluster_x { rank=same; graph [fontcolor=red, bgcolor=yellow]; a; }
+    }`;
+    const group = inspectGraph(dot).groups[0];
+    expect(readGraphOptions(dot)).toEqual({ rankdir: 'TB', fontname: 'Arial', splines: 'ortho' });
+    expect(readGraphOptions(dot, group.location)).toEqual({ rank: 'same', fontcolor: 'red' });
+    const changed = updateGraphOptions(dot, group.location, { rank: 'max', fontcolor: '#123456', fontname: 'DejaVu Sans' });
+    expect(changed).toContain('// preserve');
+    expect(changed).toContain('custom=keep');
+    expect(changed).toContain('bgcolor=yellow');
+    expect(readGraphOptions(changed).rankdir).toBe('TB');
+    expect(readGraphOptions(changed, inspectGraph(changed).groups[0].location)).toEqual({
+      rank: 'max', fontcolor: '#123456', fontname: 'DejaVu Sans',
+    });
+  });
+
+  it('creates a root graph list and targets duplicate cluster IDs by location', () => {
+    const dot = 'digraph { subgraph cluster_x { a; } subgraph cluster_x { b; } }';
+    const second = inspectGraph(dot).groups[1];
+    const changed = updateGraphOptions(dot, second.location, { rank: 'same' });
+    expect(changed).toContain('subgraph cluster_x { a; }');
+    expect(readGraphOptions(changed, inspectGraph(changed).groups[0].location)).toEqual({});
+    expect(readGraphOptions(changed, inspectGraph(changed).groups[1].location)).toEqual({ rank: 'same' });
+    const root = updateGraphOptions(changed, null, { compound: 'true', splines: 'polyline' });
+    expect(readGraphOptions(root)).toEqual({ compound: 'true', splines: 'polyline' });
+  });
+
+  it('clears only selected options from standalone attributes and graph lists, including duplicates', () => {
+    const dot = 'digraph { rankdir=LR; graph [rankdir=TB, fontname=Arial, splines=ortho]; compound=true; }';
+    const changed = updateGraphOptions(dot, null, { rankdir: '', splines: '', compound: '' });
+    expect(readGraphOptions(changed)).toEqual({ fontname: 'Arial' });
+    expect(changed).toContain('fontname=Arial');
+    expect(changed).not.toContain('rankdir');
+    expect(changed).not.toContain('splines');
+    expect(changed).not.toContain('compound');
+    expect(readGraphOptions(updateGraphOptions('digraph { graph [fontname=Arial, rank=same]; }', null, { rank: '' }))).toEqual({ fontname: 'Arial' });
+  });
+
+  it('rejects invalid targets and unsupported options without rewriting DOT', () => {
+    const dot = 'digraph { subgraph cluster_x {} }';
+    const location = inspectGraph(dot).groups[0].location;
+    expect(() => updateGraphOptions(dot, location, { compound: 'true' })).toThrow(/Unsupported graph option/);
+    expect(() => updateGraphOptions(dot, location, { rank: 1 })).toThrow(/must be a string/);
+    expect(() => readGraphOptions('digraph {}', location)).toThrow(/location/);
+    expect(() => updateGraphOptions(dot, { start: { offset: 1 }, end: { offset: 3 } }, { rank: 'same' })).toThrow(/location/);
+  });
+});
 
 describe('rearrangeGroup', () => {
   it('moves multiple declarations and a complex arrow in one valid update', () => {

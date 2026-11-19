@@ -45,6 +45,15 @@ describe('RearrangeGroupDialog', () => {
     expect(onBack).toHaveBeenCalledTimes(1)
   })
 
+  it('starts on the selected group and returns directly to Edit group on Back', async () => {
+    const onBack = vi.fn()
+    render(<RearrangeGroupDialog dot={dot} group={inspectGraph(dot).groups[1]} onCommit={vi.fn()} onBack={onBack} />)
+    expect(screen.getByRole('heading', { name: 'Rearrange cluster_team' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Select group')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(onBack).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps duplicate-group errors visible and never commits ambiguous changes', async () => {
     const onCommit = vi.fn()
     render(<RearrangeGroupDialog dot="digraph { subgraph cluster_x {} subgraph cluster_x {} }" onCommit={onCommit} onBack={vi.fn()} />)

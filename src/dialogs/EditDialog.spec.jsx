@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { createElement, planDeletion, rearrangeGroup, updateElement } from '../graph/dot.js'
+import { createElement, planDeletion, rearrangeGroup, updateElement, updateGraphOptions } from '../graph/dot.js'
 import EditDialog from './EditDialog.jsx'
 
 vi.mock('../graph/dot.js', () => ({
@@ -20,6 +20,8 @@ vi.mock('../graph/dot.js', () => ({
   createElement: vi.fn(() => 'digraph { a; b; }'),
   updateElement: vi.fn(() => 'digraph { a [label="A"]; }'),
   rearrangeGroup: vi.fn(() => 'digraph { moved; }'),
+  readGraphOptions: vi.fn(() => ({ rankdir: 'LR' })),
+  updateGraphOptions: vi.fn(() => 'digraph { configured; }'),
   planDeletion: vi.fn(() => ({
     counts: { nodes: 2, arrows: 1, groups: 1 },
     deleted: 'digraph { deleted; }',
@@ -35,17 +37,47 @@ describe('EditDialog', () => {
   it('offers distinct create and edit actions', () => {
     expect(screen.getByRole('button', { name: '(+) Group' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit arrow' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Rearrange Group' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Top Config' })).toHaveAttribute('title', 'Shortcut: T')
+    expect(screen.queryByRole('button', { name: 'Rearrange Group' })).not.toBeInTheDocument()
   })
 
-  it('uses the dedicated rearrangement dialog and commits only after Submit', async () => {
-    await userEvent.click(screen.getByRole('button', { name: 'Rearrange Group' }))
-    await userEvent.click(screen.getByRole('button', { name: 'cluster_team' }))
+  it('opens Items directly for the selected group and returns to the group list after Submit', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit group' }))
+    const row = screen.getByRole('button', { name: 'Cfg cluster_team' }).parentElement
+    expect(within(row).getAllByRole('button').map(button => button.textContent)).toEqual(['cluster_team', 'Items', 'Cfg', 'Del'])
+    await userEvent.click(screen.getByRole('button', { name: 'Items cluster_team' }))
+    expect(screen.getByRole('heading', { name: 'Rearrange cluster_team' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'cluster_team' })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Node a/ }))
     expect(onCommit).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Submit' }))
     expect(rearrangeGroup).toHaveBeenCalledTimes(1)
     expect(onCommit).toHaveBeenCalledWith('digraph { moved; }')
+    expect(screen.getByRole('heading', { name: 'Edit group' })).toBeInTheDocument()
+  })
+
+  it('opens cluster Cfg and returns to the group list on Apply or Back', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit group' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cfg cluster_team' }))
+    expect(screen.getByRole('heading', { name: 'Graph Options: cluster_team' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Splines' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(screen.getByRole('button', { name: 'Items cluster_team' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Cfg cluster_team' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(updateGraphOptions).toHaveBeenCalledWith('digraph { a; }', { start: { offset: 4 } }, expect.objectContaining({ rankdir: 'LR', rank: '' }))
+    expect(onCommit).toHaveBeenCalledWith('digraph { configured; }')
+    expect(screen.getByRole('heading', { name: 'Edit group' })).toBeInTheDocument()
+  })
+
+  it('opens Top Config from its button and shortcut T', async () => {
+    await userEvent.keyboard('t')
+    expect(screen.getByRole('heading', { name: 'Top Config' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Splines' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Top Config' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(updateGraphOptions).toHaveBeenCalledWith('digraph { a; }', null, expect.objectContaining({ splines: '', compound: '' }))
     expect(screen.getByRole('heading', { name: 'Edit' })).toBeInTheDocument()
   })
 
