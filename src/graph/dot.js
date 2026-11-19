@@ -3,7 +3,7 @@ import { parse } from '@ts-graphviz/ast';
 const ATTRIBUTES = {
   node: ['label', 'shape', 'color', 'fillcolor', 'style'],
   group: ['label', 'color', 'fillcolor', 'style', 'bgcolor'],
-  edge: ['label', 'color', 'style', 'arrowhead'],
+  edge: ['label', 'color', 'style', 'arrowhead', 'ltail', 'lhead'],
 };
 const GRAPH_OPTIONS = ['rankdir', 'rank', 'fontname', 'fontcolor'];
 const ROOT_OPTIONS = [...GRAPH_OPTIONS, 'splines', 'compound'];
@@ -215,7 +215,7 @@ export function updateGraphOptions(dot, groupLocation, data) {
 function ensureData(type, data) {
   if (!Object.hasOwn(ATTRIBUTES, type)) throw new Error(`Unsupported element type: ${type}`);
   if (!data || typeof data !== 'object') throw new TypeError('Element data must be an object');
-  const allowed = new Set([...ATTRIBUTES[type], ...(type === 'edge' ? ['source', 'target'] : ['id']), 'parentId', 'parentLocation']);
+  const allowed = new Set([...ATTRIBUTES[type], ...(type === 'edge' ? ['source', 'target', 'clipping'] : ['id']), 'parentId', 'parentLocation']);
   for (const key of Object.keys(data)) {
     if (!allowed.has(key)) throw new Error(`Unsupported ${type} field: ${key}`);
   }
@@ -271,6 +271,7 @@ function validated(dot) {
 
 export function createElement(dot, type, data) {
   ensureData(type, data);
+  if (data.clipping != null) throw new Error('Clipping is only available when editing an arrow');
   const graph = read(dot);
   const parent = parentFor(graph, data);
   const properties = attrs(type, data);
@@ -373,6 +374,55 @@ function attributeChanges(dot, type, item, data, after) {
   return changes;
 }
 
+function nodeCluster(inspected, id) {
+  const clusters = new Set(inspected.nodes.filter((node) => node.id === id).map((node) => node.parentId ?? ''));
+  if (clusters.size > 1 || [...clusters].some((cluster) =>
+    cluster && inspected.groups.filter((group) => group.id === cluster).length !== 1)) {
+    throw new Error(`Node ${id} has ambiguous cluster membership`);
+  }
+  return [...clusters][0] || '';
+}
+
+function clippingChoice(dot, source, target, choice) {
+  if (!['keep', 'none', 'start', 'end', 'both'].includes(choice)) throw new Error(`Unsupported clipping mode: ${choice}`);
+  if (choice === 'keep') return {};
+  const graph = inspectGraph(dot);
+  return {
+    ltail: choice === 'start' || choice === 'both' ? nodeCluster(graph, source) : '',
+    lhead: choice === 'end' || choice === 'both' ? nodeCluster(graph, target) : '',
+  };
+}
+
+function reconcileClipping(before, after, affectedIds = new Set(), removedGroups = new Set()) {
+  if (!affectedIds.size && !removedGroups.size) return after;
+  const beforeGraph = inspectGraph(before);
+  const afterGraph = inspectGraph(after);
+  const changes = [];
+  walk(read(after), (item) => {
+    if (item.type !== 'Edge') return;
+    const data = {};
+    for (const [key, endpoint] of [['ltail', item.targets[0]], ['lhead', item.targets.at(-1)]]) {
+      const current = item.children.filter((child) =>
+        child.type === 'Attribute' && child.key.value.toLowerCase() === key).at(-1)?.value.value;
+      if (!current) continue;
+      if (removedGroups.has(current)) {
+        if (beforeGraph.groups.filter((group) => group.id === current).length !== 1) {
+          throw new Error(`Group ${current} is ambiguous for clipping`);
+        }
+        data[key] = endpoint.type === 'NodeRef' ? nodeCluster(afterGraph, endpoint.id.value) : '';
+      } else if (endpoint.type === 'NodeRef' && affectedIds.has(endpoint.id.value) &&
+          current === nodeCluster(beforeGraph, endpoint.id.value)) {
+        const next = nodeCluster(afterGraph, endpoint.id.value);
+        if (next !== current) data[key] = next;
+      }
+    }
+    if (Object.keys(data).length) {
+      changes.push(...attributeChanges(after, 'edge', item, data, item.targets.at(-1).location.end.offset));
+    }
+  });
+  return changes.length ? patch(after, changes) : after;
+}
+
 export function updateElement(dot, type, location, data) {
   ensureData(type, data);
   const graph = read(dot);
@@ -400,13 +450,14 @@ export function updateElement(dot, type, location, data) {
         }
       });
       const { parentId, ...nodeData } = data;
-      return createElement(dot, 'node', {
+      const created = createElement(dot, 'node', {
         ...nodeData,
         id: implicit.id,
         ...(parentId != null && (parentId !== implicit.parentId || (parentId === '' && containingGroup))
           ? { parentId }
           : containingGroup ? { parentLocation: containingGroup.location } : {}),
       });
+      return reconcileClipping(dot, created, new Set([implicit.id]));
     }
   }
   if (candidates.length !== 1) throw new Error(`${type} location was not found or is ambiguous`);
@@ -432,6 +483,10 @@ export function updateElement(dot, type, location, data) {
     if (data.source != null) changes.push({ start: source.id.location.start.offset, end: source.id.location.end.offset, value: identifier(data.source, 'source') });
     if (data.target != null) changes.push({ start: target.id.location.start.offset, end: target.id.location.end.offset, value: identifier(data.target, 'target') });
     after = target.location.end.offset;
+    if (data.clipping != null) {
+      const { clipping, lhead, ltail, ...rest } = data;
+      data = { ...rest, ...clippingChoice(dot, data.source ?? source.id.value, data.target ?? target.id.value, clipping) };
+    }
   } else {
     if (type === 'group' && !item.id) throw new Error('Cannot rename an anonymous group');
     if (data.id != null) changes.push({ start: item.id.location.start.offset, end: item.id.location.end.offset, value: type === 'group' ? clusterId(data.id) : identifier(data.id, 'id') });
@@ -483,7 +538,8 @@ export function updateElement(dot, type, location, data) {
   const [start, end] = offset(edited.location);
   const statement = updated.slice(start, end);
   const without = validated(updated.slice(0, start) + updated.slice(end));
-  return validated(insert(without, parentFor(read(without), data), statement));
+  const moved = validated(insert(without, parentFor(read(without), data), statement));
+  return type === 'node' ? reconcileClipping(dot, moved, new Set([item.id.value])) : moved;
 }
 
 export function rearrangeGroup(dot, groupLocation, changes) {
@@ -570,7 +626,19 @@ export function rearrangeGroup(dot, groupLocation, changes) {
     const destination = item.inGroup ? parentFor(parentGraph, { parentId: selected.id }) : parentGraph;
     updated = validated(insert(updated, destination, `${identifier(item.id, 'id')};`));
   }
-  return updated;
+  const affectedIds = new Set(implicit.map((item) => item.id));
+  for (const [key] of moves) {
+    const [type] = key.split(':');
+    if (type === 'node') affectedIds.add(entries.get(key).id);
+    if (type === 'group') {
+      const group = entries.get(key);
+      for (const node of inspected.nodes) {
+        if (node.location.start.offset >= group.location.start.offset &&
+            node.location.end.offset <= group.location.end.offset) affectedIds.add(node.id);
+      }
+    }
+  }
+  return reconcileClipping(dot, updated, affectedIds);
 }
 
 function edgeReferences(item, id) {
@@ -680,14 +748,16 @@ export function planDeletion(dot, type, location) {
     }))) : without;
     const after = inspectGraph(deleted);
     const afterIds = new Set(after.nodes.map((node) => node.id));
+    const removedGroups = new Set(before.groups.filter(inside).map((child) => child.id));
+    const kept = patch(dot, [{ start, end, value: keepGroupChildren(dot, group) }]);
     return {
       counts: {
         nodes: new Set(before.nodes.map((node) => node.id).filter((id) => !afterIds.has(id))).size,
         arrows: before.edges.length - after.edges.length,
         groups: before.groups.length - after.groups.length,
       },
-      deleted,
-      kept: patch(dot, [{ start, end, value: keepGroupChildren(dot, group) }]),
+      deleted: reconcileClipping(dot, deleted, new Set(), removedGroups),
+      kept: reconcileClipping(dot, kept, new Set(before.nodes.filter(inside).map((node) => node.id)), new Set([group.id.value])),
     };
   } else {
     removed.push(candidates[0]);

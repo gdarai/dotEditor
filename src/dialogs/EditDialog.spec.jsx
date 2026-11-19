@@ -10,7 +10,6 @@ vi.mock('../graph/dot.js', () => ({
     nodes: [
       { id: 'a', location: { start: { offset: 1 } }, attributes: { shape: 'box', color: 'red' }, parentId: 'cluster_team' },
       { id: 'b', implicit: true, location: { start: { offset: 2 } }, attributes: {}, parentId: 'cluster_team' },
-      { id: 'cluster_team', location: { start: { offset: 3 } }, attributes: {} },
     ],
     groups: [
       { id: 'cluster_team', location: { start: { offset: 4 } }, attributes: { color: 'purple', style: 'filled' } },
@@ -234,7 +233,7 @@ describe('EditDialog', () => {
     expect(onCommit).not.toHaveBeenCalled()
   })
 
-  it('offers distinct graph IDs in both new-arrow endpoint inputs', async () => {
+  it('offers only node IDs in both new-arrow endpoint inputs', async () => {
     await userEvent.click(screen.getByRole('button', { name: '(+) Arrow' }))
     const source = screen.getByRole('combobox', { name: 'Source' })
     const target = screen.getByRole('combobox', { name: 'Target' })
@@ -243,7 +242,7 @@ describe('EditDialog', () => {
     expect(source.getAttribute('list')).not.toBe(target.getAttribute('list'))
     for (const list of [source, target].map(input => document.getElementById(input.getAttribute('list')))) {
       expect([source.getAttribute('list'), target.getAttribute('list')]).toContain(list.id)
-      expect(within(list).getAllByRole('option', { hidden: true }).map(option => option.value)).toEqual(['a', 'b', 'cluster_team'])
+      expect(within(list).getAllByRole('option', { hidden: true }).map(option => option.value)).toEqual(['a', 'b'])
     }
     expect(screen.getByRole('combobox', { name: 'Parent group' })).toHaveValue('')
   })
@@ -270,7 +269,7 @@ describe('EditDialog', () => {
     })
   })
 
-  it('orders new-arrow fields as Parent group/Source/Style/Color and Clone from/Target/Arrowhead/Label, with a filler replacing Clone from when editing', async () => {
+  it('orders new-arrow fields with Clone from and edit-arrow fields with Clipping', async () => {
     await userEvent.click(screen.getByRole('button', { name: '(+) Arrow' }))
     let fields = [...document.querySelector('.fields').children]
     let labels = fields.map(field => field.querySelector('span, label')?.textContent ?? field.textContent)
@@ -281,8 +280,24 @@ describe('EditDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'a → b' }))
     fields = [...document.querySelector('.fields').children]
     labels = fields.map(field => field.querySelector('span, label')?.textContent ?? field.textContent)
-    expect(labels).toEqual(['Parent group', '', 'Source', 'Target', 'Style', 'Arrowhead', 'Color', 'Label'])
-    expect(fields[1]).toHaveClass('field-empty')
+    expect(labels).toEqual(['Parent group', 'Clipping', 'Source', 'Target', 'Style', 'Arrowhead', 'Color', 'Label'])
+    expect(screen.getByRole('combobox', { name: 'Clipping' })).toHaveValue('keep')
+    expect(within(screen.getByRole('combobox', { name: 'Clipping' })).getAllByRole('option').map(option => option.value)).toEqual(['keep', 'none', 'start', 'end', 'both'])
+    for (const label of ['Source', 'Target']) {
+      const input = screen.getByRole('combobox', { name: label })
+      expect(within(document.getElementById(input.getAttribute('list'))).getAllByRole('option', { hidden: true }).map(option => option.value)).toEqual(['a', 'b'])
+    }
+  })
+
+  it('sends the chosen clipping mode for Edit arrow and resets it on reopening', async () => {
+    await userEvent.click(screen.getByRole('button', { name: 'Edit arrow' }))
+    await userEvent.click(screen.getByRole('button', { name: 'a → b' }))
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Clipping' }), 'both')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    expect(updateElement).toHaveBeenLastCalledWith('digraph { a; }', 'edge', { start: { offset: 5 } }, expect.objectContaining({ clipping: 'both' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit arrow' }))
+    await userEvent.click(screen.getByRole('button', { name: 'a → b' }))
+    expect(screen.getByRole('combobox', { name: 'Clipping' })).toHaveValue('keep')
   })
 
   it('offers a Clone from field listing other groups and clones unset attributes for a new group', async () => {

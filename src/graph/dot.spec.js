@@ -524,3 +524,114 @@ describe('updateElement', () => {
     expect(() => updateElement('graph {}', 'group', { start: {}, end: {} }, {})).toThrow(/location/);
   });
 });
+
+describe('edge clipping', () => {
+  const dot = 'digraph { subgraph cluster_outer { subgraph cluster_start { a; } } subgraph cluster_end { b; } a -> b [weight=5, ltail=old, lhead=old]; }';
+
+  it('applies each edit-arrow mode while preserving unrelated edge attributes', () => {
+    const edge = inspectGraph(dot).edges[0];
+    for (const [mode, expected] of [
+      ['keep', { ltail: 'old', lhead: 'old' }],
+      ['none', {}],
+      ['start', { ltail: 'cluster_start' }],
+      ['end', { lhead: 'cluster_end' }],
+      ['both', { ltail: 'cluster_start', lhead: 'cluster_end' }],
+    ]) {
+      const updated = updateElement(dot, 'edge', edge.location, { clipping: mode });
+      expect(inspectGraph(updated).edges[0].attributes).toEqual(expected);
+      expect(updated).toContain('weight=5');
+    }
+    expect(() => updateElement(dot, 'edge', edge.location, { clipping: 'other' })).toThrow(/Unsupported clipping/);
+  });
+
+  it('uses edited endpoints and removes clipping when no cluster contains them', () => {
+    const edge = inspectGraph(dot).edges[0];
+    const updated = updateElement(dot, 'edge', edge.location, { source: 'unknown', target: 'a', clipping: 'both' });
+    expect(inspectGraph(updated).edges[0].attributes).toEqual({ lhead: 'cluster_start' });
+    expect(updated).toContain('weight=5');
+  });
+
+  it('removes duplicate clipping attributes without changing custom attributes', () => {
+    const original = 'digraph { a -> b [ltail=first, weight=2, ltail=second, lhead=old]; }';
+    const updated = updateElement(original, 'edge', inspectGraph(original).edges[0].location, { clipping: 'none' });
+    expect(updated).not.toMatch(/ltail|lhead/);
+    expect(updated).toContain('weight=2');
+    expect(inspectGraph(updated).edges[0].attributes).toEqual({});
+  });
+
+  it('rejects ambiguous node clusters only when clipping needs their value', () => {
+    const original = 'digraph { subgraph cluster_a { a; } subgraph cluster_b { a; } a -> b [lhead=old]; }';
+    const edge = inspectGraph(original).edges[0];
+    expect(() => updateElement(original, 'edge', edge.location, { clipping: 'start' })).toThrow(/ambiguous/);
+    expect(updateElement(original, 'edge', edge.location, { clipping: 'keep' })).toContain('lhead=old');
+  });
+
+  it('retargets only clipping referring to a former cluster on Edit node moves', () => {
+    const original = 'digraph { subgraph cluster_a { a; } subgraph cluster_b { b; } x -> a [lhead=cluster_a, custom=keep]; a -> b [ltail=cluster_a, lhead=other]; a -> a [ltail=cluster_a, lhead=cluster_a]; b -> a [lhead=custom]; }';
+    const a = inspectGraph(original).nodes.find((node) => node.id === 'a');
+    const moved = updateElement(original, 'node', a.location, { parentId: 'cluster_b' });
+    expect(inspectGraph(moved).edges.map((edge) => edge.attributes)).toEqual([
+      { lhead: 'cluster_b' },
+      { ltail: 'cluster_b', lhead: 'other' },
+      { ltail: 'cluster_b', lhead: 'cluster_b' },
+      { lhead: 'custom' },
+    ]);
+    expect(moved).toContain('custom=keep');
+    const outside = updateElement(moved, 'node', inspectGraph(moved).nodes.find((node) => node.id === 'a').location, { parentId: '' });
+    expect(inspectGraph(outside).edges.map((edge) => edge.attributes)).toEqual([{}, { lhead: 'other' }, {}, { lhead: 'custom' }]);
+  });
+
+  it('updates clipping on an unambiguous complex endpoint, leaving grouped endpoints alone', () => {
+    const original = 'digraph { subgraph cluster_a { a; } subgraph cluster_b { b; } a:p -> b -> c [ltail=cluster_a, lhead=cluster_b]; {a b} -> c [ltail=cluster_a]; }';
+    const a = inspectGraph(original).nodes.find((node) => node.id === 'a');
+    const moved = updateElement(original, 'node', a.location, { parentId: 'cluster_b' });
+    expect(inspectGraph(moved).edges.map((edge) => edge.attributes)).toEqual([
+      { ltail: 'cluster_b', lhead: 'cluster_b' },
+      { ltail: 'cluster_a' },
+    ]);
+  });
+
+  it('reconciles simultaneous moves and descendants in Group rearrangement', () => {
+    const original = 'digraph { subgraph cluster_a { a; subgraph cluster_child { c; } } subgraph cluster_b { b; } a -> b [ltail=cluster_a, lhead=cluster_b]; c -> b [ltail=cluster_child]; }';
+    const before = inspectGraph(original);
+    const moved = rearrangeGroup(original, before.groups.find((group) => group.id === 'cluster_b').location, [
+      { type: 'node', location: before.nodes.find((node) => node.id === 'a').location, inGroup: true },
+      { type: 'group', location: before.groups.find((group) => group.id === 'cluster_child').location, inGroup: true },
+      { type: 'node', location: before.nodes.find((node) => node.id === 'c').location, inGroup: true },
+    ]);
+    expect(inspectGraph(moved).edges.map((edge) => edge.attributes)).toEqual([
+      { ltail: 'cluster_b', lhead: 'cluster_b' },
+      { ltail: 'cluster_b' },
+    ]);
+  });
+
+  it('updates clipping when rearranging implicit nodes without moving their arrows', () => {
+    const original = 'digraph { subgraph cluster_a { a -> b [lhead=cluster_a]; } subgraph cluster_b {} }';
+    const before = inspectGraph(original);
+    const moved = rearrangeGroup(original, before.groups[1].location, [
+      { type: 'node', location: before.nodes.find((node) => node.id === 'b').location, inGroup: true },
+    ]);
+    expect(inspectGraph(moved).nodes.find((node) => node.id === 'b').parentId).toBe('cluster_b');
+    expect(inspectGraph(moved).edges[0].attributes.lhead).toBe('cluster_b');
+  });
+
+  it('reconciles clipping after group deletion with either deletion choice', () => {
+    const original = 'digraph { subgraph cluster_parent { subgraph cluster_child { a; } b; } a -> b [ltail=cluster_child, lhead=cluster_parent, custom=keep]; x -> y [lhead=cluster_child]; }';
+    const group = inspectGraph(original).groups.find((item) => item.id === 'cluster_child');
+    const { kept, deleted } = planDeletion(original, 'group', group.location);
+    expect(inspectGraph(kept).edges.map((edge) => edge.attributes)).toEqual([
+      { ltail: 'cluster_parent', lhead: 'cluster_parent' },
+      {},
+    ]);
+    expect(kept).toContain('custom=keep');
+    expect(inspectGraph(deleted).edges).toHaveLength(1);
+    expect(inspectGraph(deleted).edges[0].attributes).toEqual({});
+  });
+
+  it('clears deleted cluster references on complex arrows with grouped endpoints', () => {
+    const original = 'digraph { subgraph cluster_a {} {a b} -> c [ltail=cluster_a]; }';
+    const { deleted, kept } = planDeletion(original, 'group', inspectGraph(original).groups[0].location);
+    expect(inspectGraph(deleted).edges[0].attributes).toEqual({});
+    expect(inspectGraph(kept).edges[0].attributes).toEqual({});
+  });
+});

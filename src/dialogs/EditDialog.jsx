@@ -46,7 +46,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
   const [raw, setRaw] = useState(dot)
   const [error, setError] = useState('')
   const graph = inspectGraph(dot)
-  const ids = [...graph.nodes, ...graph.groups].map(item => item.id)
+  const ids = graph.nodes.map(item => item.id)
   const type = action.split('-')[1]
   const editing = action.startsWith('edit-')
   const dialogRef = useAutoFocus([page])
@@ -74,11 +74,12 @@ export default function EditDialog({ dot, onCommit, onClose }) {
 
   function chooseElement(element) {
     setSelected(element)
+    const { lhead, ltail, ...attributes } = element.attributes
     setFields({
       ...(type === 'edge'
-        ? { source: element.source, target: element.target }
+        ? { source: element.source, target: element.target, clipping: 'keep' }
         : { id: element.id }),
-      ...element.attributes,
+      ...attributes,
       parentId: element.parentId || '',
     })
     setError('')
@@ -220,7 +221,7 @@ export default function EditDialog({ dot, onCommit, onClose }) {
               <InputID label="Parent group" value={fields.parentId || ''} options={graph.groups.map(group => group.id)} onChange={value => change('parentId', value)} />
               {!editing
                 ? <InputID label="Clone from" value={fields.cloneFrom || ''} options={graph.edges.map(edge => edgeLabel(edge, graph.directed))} onChange={value => change('cloneFrom', value)} />
-                : <Empty />}
+                : <OptionsSelectBox label="Clipping" value={fields.clipping} options={['keep', 'none', 'start', 'end', 'both']} onChange={value => change('clipping', value)} required />}
               <InputID label="Source" required value={fields.source || ''} options={ids} onChange={value => change('source', value)} />
               <InputID label="Target" required value={fields.target || ''} options={ids} onChange={value => change('target', value)} />
               <SelectField label="Style" value={fields.style || ''} choices={['solid', 'dashed', 'dotted', 'bold', 'filled', 'rounded']} onChange={value => change('style', value)} />
